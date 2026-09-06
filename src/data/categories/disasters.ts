@@ -1,0 +1,33 @@
+import type { DateEntry } from '../types';
+
+/** Natural disasters, accidents and catastrophes. */
+export const DISASTERS: DateEntry[] = [
+  { id: 'dis-lisbon-earthquake', prompt: 'What year was the Lisbon earthquake?', year: 1755, category: 'disasters', difficulty: 5 },
+  { id: 'dis-krakatoa', prompt: 'What year did Krakatoa erupt catastrophically?', year: 1883, category: 'disasters', difficulty: 5 },
+  { id: 'dis-san-francisco-quake', prompt: 'What year was the San Francisco earthquake that destroyed much of the city?', year: 1906, category: 'disasters', difficulty: 4 },
+  { id: 'dis-spanish-flu', prompt: 'What year did the Spanish flu pandemic begin?', year: 1918, category: 'disasters', difficulty: 3 },
+  { id: 'dis-hindenburg', prompt: 'What year did the Hindenburg airship disaster occur?', year: 1937, category: 'disasters', difficulty: 4 },
+  { id: 'dis-aberfan', prompt: 'What year was the Aberfan disaster in Wales?', year: 1966, category: 'disasters', difficulty: 5 },
+  { id: 'dis-bhopal', prompt: 'What year was the Bhopal gas disaster?', year: 1984, category: 'disasters', difficulty: 5 },
+  { id: 'dis-chernobyl', prompt: 'What year was the Chernobyl nuclear disaster?', year: 1986, category: 'disasters', difficulty: 1 },
+  { id: 'dis-exxon-valdez', prompt: 'What year was the Exxon Valdez oil spill?', year: 1989, category: 'disasters', difficulty: 5 },
+  { id: 'dis-hillsborough', prompt: 'What year was the Hillsborough stadium disaster?', year: 1989, category: 'disasters', difficulty: 4 },
+  { id: 'dis-boxing-day-tsunami', prompt: 'What year was the Indian Ocean Boxing Day tsunami?', year: 2004, category: 'disasters', difficulty: 1 },
+  { id: 'dis-hurricane-katrina', prompt: 'What year did Hurricane Katrina hit New Orleans?', year: 2005, category: 'disasters', difficulty: 3 },
+  { id: 'dis-haiti-earthquake', prompt: 'What year was the Haiti earthquake?', year: 2010, category: 'disasters', difficulty: 4 },
+  { id: 'dis-deepwater-horizon', prompt: 'What year was the Deepwater Horizon oil spill?', year: 2010, category: 'disasters', difficulty: 4 },
+  { id: 'dis-fukushima', prompt: 'What year was the Fukushima nuclear disaster?', year: 2011, category: 'disasters', difficulty: 3 },
+  { id: 'dis-grenfell', prompt: 'What year was the Grenfell Tower fire?', year: 2017, category: 'disasters', difficulty: 3 },
+  { id: 'dis-notre-dame-fire', prompt: 'What year did Notre-Dame cathedral catch fire?', year: 2019, category: 'disasters', difficulty: 3 },
+  { id: 'dis-beirut-explosion', prompt: 'What year was the Beirut port explosion?', year: 2020, category: 'disasters', difficulty: 3 },
+  { id: 'dis-turkey-syria-quake', prompt: 'What year was the Turkey–Syria earthquake that killed over 50,000 people?', year: 2023, category: 'disasters', difficulty: 3 },
+  { id: 'dis-mount-st-helens', prompt: 'What year did Mount St. Helens erupt?', year: 1980, category: 'disasters', difficulty: 4 },
+  { id: 'dis-great-smog-london', prompt: 'What year was the Great Smog of London?', year: 1952, category: 'disasters', difficulty: 5 },
+  { id: 'dis-black-death-arrival', prompt: 'What year did the Black Death arrive in Europe?', year: 1347, category: 'disasters', difficulty: 4 },
+  { id: 'dis-great-plague-london', prompt: 'What year was the Great Plague of London?', year: 1665, category: 'disasters', difficulty: 4 },
+  { id: 'dis-piper-alpha', prompt: 'What year was the Piper Alpha oil rig disaster?', year: 1988, category: 'disasters', difficulty: 5 },
+  { id: 'dis-lockerbie', prompt: 'What year was the Lockerbie bombing?', year: 1988, category: 'disasters', difficulty: 4 },
+  { id: 'dis-concorde-crash', prompt: 'What year did the Air France Concorde crash?', year: 2000, category: 'disasters', difficulty: 4 },
+  { id: 'dis-japan-tsunami-quake', prompt: 'What year was the Tōhoku earthquake and tsunami in Japan?', year: 2011, category: 'disasters', difficulty: 3 },
+  { id: 'dis-australia-bushfires', prompt: 'What year did the Australian "Black Summer" bushfires begin?', year: 2019, category: 'disasters', difficulty: 4 },
+];

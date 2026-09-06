@@ -1,3 +1,2 @@
 export { useCloudArcade } from './useCloudArcade';
-export { useGameCanvas } from './useGameCanvas';
-export { useInput } from './useInput';
+export { useDateGame } from './useDateGame';

@@ -1,344 +1,151 @@
-# Guess Masters
+# Guess Masters — Guess the Date
 
-Guess Masters starter template — a React + Canvas project scaffold for building guessing games that integrate with the CloudArcade platform. Games built from this template are embedded via iframe, communicate through postMessage, and deploy as static sites on GitHub Pages.
+A survival guessing game for the CloudArcade platform. The player is asked what
+year something happened; every year they are off costs one health. Run out of
+health and the run ends — the score is the number of rounds survived.
 
-## Features
+Static site, no backend. The entire knowledge base ships in the bundle.
 
-- **React + TypeScript** - Modern component-based architecture with type safety
-- **Canvas Game Rendering** - Performant 2D rendering with custom hooks
-- **Platform Integration** - Complete CloudArcade postMessage protocol implementation
-- **State Management** - Context API for global game state
-- **Custom Hooks** - Reusable logic for canvas, input, and platform communication
-- **CSS Modules** - Scoped styling for components
-- **Asset Organization** - Structured folders for sprites, audio, and data
-- **Responsive Design** - Adapts to any container size with touch support
-- **GitHub Pages Deployment** - CI/CD workflow included for automatic deployment
-- **Test Harness** - Local development tool simulating platform integration
+## Gameplay
 
-## Quick Start
+| Rule | Value |
+|------|-------|
+| Starting health | 250 |
+| Damage | 1 per year off (`\|guess − answer\|`) |
+| Perfect guess | +10 health (tapered by round) |
+| Within 2 years | +3 health (tapered by round) |
+| Score | Rounds survived |
 
-### 1. Create Your Repository
+Answers are always four digits, entered into four slots via an on-screen keypad
+or the physical keyboard. `Enter` locks in a guess and advances the reveal;
+`Backspace` deletes.
 
-Click "Use this template" on GitHub or clone the repository:
+### The bonus taper
 
-```bash
-git clone https://github.com/cloud-arcade/guess-masters.git my-game
-cd my-game
-```
+A flat perfect-guess bonus larger than a skilled player's typical damage lets
+health regenerate faster than it drains, making expert runs endless. The bonus
+therefore scales down as rounds climb (`bonusScale` in `src/game/rules.ts`):
+full value to round 10, 60% to round 25, 30% to round 45, then nothing. Simulated
+outcomes across player skill levels:
 
-### 2. Install Dependencies
+| Player | Median rounds | p90 |
+|--------|---------------|-----|
+| Casual | 12 | 17 |
+| Average | 18 | 24 |
+| Strong | 34 | 44 |
+| Expert | 75 | 90 |
 
-```bash
-npm install
-```
+### Modes
 
-### 3. Start Development Server
+- **Survival** — always plays the full library and submits to the leaderboard.
+  The platform has a single leaderboard, so filtered runs would produce
+  incomparable scores; survival is deliberately not filterable.
+- **Freeplay** — pick any combination of categories, practise, no score.
 
-```bash
-npm run dev
-```
+An in-progress survival run is saved to `localStorage` after every round and can
+be resumed from the menu.
 
-The game will open at http://localhost:3000
+## Knowledge base
 
-### 4. Test Platform Integration
+730 questions across 15 categories, spanning 1066–2023.
 
-In a separate terminal, run the test harness:
+| Category | Entries | | Category | Entries |
+|----------|--------:|-|----------|--------:|
+| Film | 100 | | Art | 35 |
+| Music | 84 | | Inventions | 35 |
+| History | 83 | | Politics | 35 |
+| Technology | 50 | | Television | 35 |
+| Video Games | 50 | | Exploration | 30 |
+| Sport | 45 | | Disasters | 28 |
+| Literature | 40 | | | |
+| Science | 40 | | | |
+| Space | 40 | | | |
 
-```bash
-npm run test:harness
-```
+Difficulty runs 1 (household knowledge) to 5 (specialist). Early rounds weight
+easy entries so new players get a foothold; later rounds open up the full range.
 
-This opens a testing interface at http://localhost:3001 that simulates CloudArcade's parent window.
+### Adding questions
 
-### 5. Build for Production
+1. Open `src/data/categories/<category>.ts`.
+2. Append a `DateEntry`:
 
-```bash
-npm run build
-```
-
-Output is generated in the `dist/` folder.
-
-## Project Structure
-
-```
-├── .github/
-│   └── workflows/
-│       └── deploy.yml          # GitHub Pages deployment workflow
-├── public/
-│   ├── assets/
-│   │   ├── audio/              # Sound effects and music
-│   │   ├── data/               # JSON data files (levels, configs)
-│   │   ├── fonts/              # Custom fonts
-│   │   ├── images/             # Static images and backgrounds
-│   │   └── sprites/            # Sprite sheets and animations
-│   └── favicon.svg             # Game icon
-├── src/
-│   ├── components/
-│   │   ├── screens/            # Screen components (Menu, Game, GameOver)
-│   │   ├── ui/                 # Reusable UI components (Button, HUD)
-│   │   └── GameContainer.tsx   # Main game container
-│   ├── context/
-│   │   └── GameContext.tsx     # Global state management
-│   ├── hooks/
-│   │   ├── useCloudArcade.ts   # Platform integration hook
-│   │   ├── useGameCanvas.ts    # Canvas setup and game loop
-│   │   └── useInput.ts         # Keyboard/mouse/touch input
-│   ├── platform/
-│   │   └── CloudArcade.ts      # Platform communication layer
-│   ├── styles/
-│   │   └── index.css           # Global CSS variables and reset
-│   ├── types/
-│   │   └── index.ts            # TypeScript type definitions
-│   ├── App.tsx                 # Main app component
-│   └── main.tsx                # Entry point
-├── test-harness/               # Local testing tools
-├── index.html                  # HTML entry point
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
-```
-
-## Platform Integration
-
-### CloudArcade Communication
-
-Use the `useCloudArcade` hook to communicate with the CloudArcade platform:
-
-```tsx
-import { useCloudArcade } from './hooks/useCloudArcade';
-import { useGameContext } from './context/GameContext';
-
-function GameComponent() {
-  const { state, dispatch } = useGameContext();
-  const { startSession, submitScore, endSession, gameOver } = useCloudArcade();
-
-  const handleStartGame = () => {
-    startSession();
-    dispatch({ type: 'SET_STATE', payload: 'playing' });
-  };
-
-  const handleGameOver = () => {
-    submitScore(state.score, { level: state.level });
-    gameOver(state.score, state.score > state.highScore);
-  };
-
-  // ...
+```ts
+{
+  id: 'film-some-movie',        // unique, `<category>-<slug>`
+  prompt: 'What year was "Some Movie" released?',
+  year: 1994,                    // four digits, CE
+  category: 'film',
+  difficulty: 3,                 // 1–5
+  fact: 'Optional trivia shown after the guess.',
 }
 ```
 
-### Message Types
+Ids must be unique across the whole library — `ALL_ENTRIES` de-duplicates by id,
+and a duplicate would silently drop. Prompts should be unique too, so the same
+question cannot appear twice in one run.
 
-**Game → Platform:**
-| Type | Purpose |
-|------|---------|
-| `GAME_READY` | Signal game has loaded |
-| `START_SESSION` | Request a new game session |
-| `END_SESSION` | End the current session |
-| `SUBMIT_SCORE` | Submit a score |
-| `GAME_OVER` | Signal game ended |
-| `GAME_ERROR` | Report an error |
+### Adding a category
 
-**Platform → Game:**
-| Type | Purpose |
-|------|---------|
-| `USER_INFO` | User context after GAME_READY |
-| `SESSION_STARTED` | Session created |
-| `SESSION_ENDED` | Session ended |
-| `SCORE_SUBMITTED` | Score saved with rank |
-| `SCORE_ERROR` | Score submission failed |
+1. Add metadata to `CATEGORIES` in `src/data/categories.ts` (label, icon, blurb,
+   accent colours).
+2. Create `src/data/categories/<id>.ts` exporting a `DateEntry[]`.
+3. Register it in `CATEGORY_SOURCES` in `src/data/index.ts`.
+4. Add the id to the `CategoryId` union in `src/data/types.ts`.
 
-## Building Your Game
+The menu, filters and question pool all derive from that registry — nothing else
+needs changing.
 
-### 1. Create Your Scenes
+## Project structure
 
-Extend the `Scene` class for each game screen:
-
-```typescript
-import { Scene } from '@/game/scenes/Scene';
-
-export class MyGameScene extends Scene {
-  protected onEnter(): void {
-    // Initialize scene
-  }
-
-  public update(deltaTime: number): void {
-    // Game logic (deltaTime in seconds)
-  }
-
-  public render(ctx: CanvasRenderingContext2D): void {
-    // Draw to canvas
-  }
-}
+```
+src/
+├── data/
+│   ├── types.ts              # DateEntry, Category, CategoryId
+│   ├── categories.ts         # category registry (labels, icons, colours)
+│   ├── categories/*.ts       # the knowledge base, one file per category
+│   └── index.ts              # aggregation, de-duplication, pool selection
+├── game/                     # pure logic, no React
+│   ├── rules.ts              # health, damage, bonuses, difficulty ramp, ranks
+│   ├── selector.ts           # seeded RNG + weighted question selection
+│   ├── storage.ts            # localStorage (run, stats, prefs) — all best-effort
+│   └── sound.ts              # WebAudio SFX, synthesised (no audio assets)
+├── hooks/
+│   ├── useDateGame.ts        # the run state machine
+│   └── useCloudArcade.ts     # platform postMessage integration
+├── components/
+│   ├── game/                 # DigitSlots, Keypad, HealthBar, QuestionCard, ResultReveal
+│   ├── screens/              # HomeScreen, PlayScreen, ResultsScreen
+│   └── GameContainer.tsx     # screen routing + platform wiring
+└── styles/index.css          # theme tokens + animations
 ```
 
-### 2. Create Entities
+The `game/` layer is deliberately framework-free so the rules can be tested and
+simulated without React.
 
-Extend the `Entity` class for game objects:
+## Platform integration
 
-```typescript
-import { Entity, EntityConfig } from '@/game/entities/Entity';
+Survival runs call `START_SESSION` on start and, on death, `SUBMIT_SCORE` with
+rounds survived plus metadata (exact guesses, average delta), followed by
+`GAME_OVER`. The results screen reports whether the submission succeeded and the
+returned rank.
 
-export class Enemy extends Entity {
-  constructor(config: EntityConfig) {
-    super(config);
-  }
-
-  public update(deltaTime: number): void {
-    // Update logic
-  }
-
-  public render(ctx: CanvasRenderingContext2D): void {
-    // Draw entity
-  }
-}
-```
-
-### 3. Handle Input
-
-Use the `InputManager` for keyboard, mouse, and touch:
-
-```typescript
-const input = this.game.input;
-
-// Keyboard
-if (input.isKeyDown('ArrowLeft')) { /* held */ }
-if (input.isKeyPressed('Space')) { /* just pressed */ }
-
-// Mouse
-const pos = input.mousePosition;
-if (input.isMousePressed(0)) { /* left click */ }
-
-// Touch
-if (input.isTouching) {
-  const touches = input.touchPositions;
-}
-```
-
-### 4. Load Assets
-
-Use the `AssetLoader` for images, audio, and data:
-
-```typescript
-import { assetLoader } from '@/game/utils/AssetLoader';
-
-await assetLoader.load({
-  images: [
-    { key: 'player', src: '/assets/player.png' },
-  ],
-  audio: [
-    { key: 'jump', src: '/assets/sounds/jump.mp3' },
-  ],
-}, (progress) => {
-  console.log(`Loading: ${progress.percent}%`);
-});
-
-// Use assets
-const playerImg = assetLoader.getImage('player');
-assetLoader.playSound('jump');
-```
-
-## Configuration
-
-### Vite Config
-
-Update `vite.config.ts` with your repository name for GitHub Pages:
-
-```typescript
-export default defineConfig({
-  base: '/guess-masters/',
-  // ...
-});
-```
-
-### Game Settings
-
-Modify `src/main.ts` to configure your game:
-
-```typescript
-const game = new Game({
-  canvasId: 'game-canvas',
-  targetFps: 60,
-  debug: import.meta.env.DEV,
-});
-
-// Add your scenes
-game.addScene('menu', new MyMenuScene());
-game.addScene('play', new MyPlayScene());
-```
-
-## Deployment
-
-### Automatic (GitHub Actions)
-
-1. Push to the `main` branch
-2. GitHub Actions builds and deploys automatically
-3. Enable GitHub Pages in repository settings (from `gh-pages` branch)
-
-### Manual
-
-```bash
-npm run build
-# Deploy the dist/ folder to any static host
-```
-
-## Design Guidelines
-
-### Color Palette
-
-```css
-/* Backgrounds */
---color-bg-deep: #0a0a1a;
---color-bg: #1f2235;
---color-bg-card: #252840;
-
-/* Accents */
---color-primary: #f06530;    /* Orange */
---color-success: #22c55e;    /* Green */
---color-warning: #f59e0b;    /* Yellow */
---color-danger: #ef4444;     /* Red */
-
-/* Text */
---color-text: #dfe3ea;
---color-text-muted: #7a8499;
-```
-
-### Typography
-
-- Font: Inter, system-ui, sans-serif
-- Minimum size: 14px
-
-### UI Elements
-
-- Border radius: 8-12px
-- Transitions: 150-200ms
+The game is fully playable standalone — if nothing answers `GAME_READY`,
+`isConnected` stays false and sends are harmless no-ops.
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build |
-| `npm run test:harness` | Start test harness |
+| `npm run dev` | Dev server on :3000 |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Preview the build |
+| `npm run test:harness` | Platform test harness on :3001 |
 
-## Requirements
+## Deployment
 
-- Node.js 18+
-- npm 9+
+Push to `main`; GitHub Actions builds and deploys to Pages. Set `base` in
+`vite.config.ts` to your repository name.
 
 ## License
 
 MIT
-
----
-
-## CloudArcade Registration
-
-Once deployed, register your game in CloudArcade admin:
-
-| Field | Value |
-|-------|-------|
-| URL | `https://[org].github.io/[repo]/` |
-| Category | action, puzzle, arcade, etc. |
-| Thumbnail | 400×300 preview image |
-| Banner | 1200×400 banner image |

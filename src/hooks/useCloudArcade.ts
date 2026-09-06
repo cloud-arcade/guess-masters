@@ -1,10 +1,15 @@
 /**
  * CloudArcade Platform Integration Hook
- * Handles communication with the parent CloudArcade platform
+ *
+ * Wraps the postMessage protocol and exposes connection state plus the result
+ * of the most recent score submission, so the results screen can report whether
+ * a run actually made it to the leaderboard.
+ *
+ * The game is fully playable standalone: when no parent responds to GAME_READY,
+ * `isConnected` stays false and every send is a harmless no-op into the void.
  */
 
-import { useEffect, useCallback, useRef } from 'react';
-import { useGameContext } from '../context/GameContext';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface CloudArcadeOptions {
   debug?: boolean;
@@ -32,7 +37,6 @@ interface ScorePayload {
   checksum?: string;
 }
 
-// Message types
 type GameToParentMessage =
   | { type: 'GAME_READY' }
   | { type: 'START_SESSION'; payload?: { metadata?: Record<string, unknown> } }
@@ -48,24 +52,33 @@ type ParentToGameMessage =
   | { type: 'SCORE_SUBMITTED'; payload: { score: object; rank?: number } }
   | { type: 'SCORE_ERROR'; payload: { error: string } };
 
+export type ScoreState = 'idle' | 'pending' | 'ok' | 'error';
+
 export function useCloudArcade(options: CloudArcadeOptions = {}) {
   const { debug = false } = options;
-  const { dispatch } = useGameContext();
+
+  const [isConnected, setIsConnected] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [scoreState, setScoreState] = useState<ScoreState>('idle');
+  const [lastRank, setLastRank] = useState<number | undefined>(undefined);
   const sessionIdRef = useRef<string | null>(null);
 
-  const log = useCallback((...args: unknown[]) => {
-    if (debug) {
-      console.log('[CloudArcade]', ...args);
-    }
-  }, [debug]);
+  const log = useCallback(
+    (...args: unknown[]) => {
+      if (debug) console.log('[CloudArcade]', ...args);
+    },
+    [debug]
+  );
 
-  // Send message to parent
-  const sendMessage = useCallback((message: GameToParentMessage) => {
-    log('Sending:', message);
-    window.parent.postMessage(message, '*');
-  }, [log]);
+  const sendMessage = useCallback(
+    (message: GameToParentMessage) => {
+      log('Sending:', message);
+      // Standalone (no parent frame) is a supported mode, so this is safe.
+      window.parent.postMessage(message, '*');
+    },
+    [log]
+  );
 
-  // Handle messages from parent
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data as ParentToGameMessage;
@@ -75,63 +88,79 @@ export function useCloudArcade(options: CloudArcadeOptions = {}) {
 
       switch (data.type) {
         case 'USER_INFO':
-          dispatch({ type: 'SET_PLATFORM_CONNECTED', payload: true });
-          dispatch({ type: 'SET_USER_ID', payload: data.payload.userId || data.payload.guestId || null });
-          dispatch({ type: 'SET_STATE', payload: 'menu' });
+          setIsConnected(true);
+          setUserId(data.payload.userId ?? data.payload.guestId ?? null);
           break;
 
         case 'SESSION_STARTED':
           sessionIdRef.current = data.payload.sessionId;
-          dispatch({ type: 'SET_SESSION_ID', payload: data.payload.sessionId });
           break;
 
         case 'SESSION_ENDED':
           sessionIdRef.current = null;
-          dispatch({ type: 'SET_SESSION_ID', payload: null });
           break;
 
         case 'SCORE_SUBMITTED':
-          log('Score submitted, rank:', data.payload.rank);
+          setScoreState('ok');
+          setLastRank(data.payload.rank);
           break;
 
         case 'SCORE_ERROR':
           console.error('Score error:', data.payload.error);
+          setScoreState('error');
           break;
       }
     };
 
     window.addEventListener('message', handleMessage);
-    
-    // Send GAME_READY on mount
     sendMessage({ type: 'GAME_READY' });
 
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, [dispatch, log, sendMessage]);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [log, sendMessage]);
 
-  // Public API
-  const startSession = useCallback((metadata?: Record<string, unknown>) => {
-    sendMessage({ type: 'START_SESSION', payload: metadata ? { metadata } : undefined });
-  }, [sendMessage]);
+  const startSession = useCallback(
+    (metadata?: Record<string, unknown>) => {
+      setScoreState('idle');
+      setLastRank(undefined);
+      sendMessage({ type: 'START_SESSION', payload: metadata ? { metadata } : undefined });
+    },
+    [sendMessage]
+  );
 
-  const endSession = useCallback((metadata?: Record<string, unknown>) => {
-    sendMessage({ type: 'END_SESSION', payload: metadata ? { metadata } : undefined });
-  }, [sendMessage]);
+  const endSession = useCallback(
+    (metadata?: Record<string, unknown>) => {
+      sendMessage({ type: 'END_SESSION', payload: metadata ? { metadata } : undefined });
+    },
+    [sendMessage]
+  );
 
-  const submitScore = useCallback((score: number, metadata?: Record<string, unknown>) => {
-    sendMessage({ type: 'SUBMIT_SCORE', payload: { score, metadata } });
-  }, [sendMessage]);
+  const submitScore = useCallback(
+    (score: number, metadata?: Record<string, unknown>) => {
+      setScoreState('pending');
+      sendMessage({ type: 'SUBMIT_SCORE', payload: { score, metadata } });
+    },
+    [sendMessage]
+  );
 
-  const gameOver = useCallback((score?: number, endSession = true, metadata?: Record<string, unknown>) => {
-    sendMessage({ type: 'GAME_OVER', payload: { score, endSession, metadata } });
-  }, [sendMessage]);
+  const gameOver = useCallback(
+    (score?: number, endSessionToo = true, metadata?: Record<string, unknown>) => {
+      sendMessage({ type: 'GAME_OVER', payload: { score, endSession: endSessionToo, metadata } });
+    },
+    [sendMessage]
+  );
 
-  const reportError = useCallback((message: string) => {
-    sendMessage({ type: 'GAME_ERROR', payload: message });
-  }, [sendMessage]);
+  const reportError = useCallback(
+    (message: string) => {
+      sendMessage({ type: 'GAME_ERROR', payload: message });
+    },
+    [sendMessage]
+  );
 
   return {
+    isConnected,
+    userId,
+    scoreState,
+    lastRank,
     startSession,
     endSession,
     submitScore,
