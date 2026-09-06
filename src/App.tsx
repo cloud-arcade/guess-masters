@@ -1,23 +1,12 @@
 /**
- * Main App Component
- * Entry point for the React game application
+ * App — root component.
+ *
+ * All game state lives in GameContainer and the useDateGame hook; there is no
+ * global context, because nothing outside the container needs it.
  */
 
-import { GameProvider } from './context/GameContext';
 import { GameContainer } from './components/GameContainer';
-import { useCloudArcade } from './hooks/useCloudArcade';
-
-function AppContent() {
-  // Initialize CloudArcade platform integration
-  useCloudArcade({ debug: import.meta.env.DEV });
-
-  return <GameContainer />;
-}
 
 export default function App() {
-  return (
-    <GameProvider>
-      <AppContent />
-    </GameProvider>
-  );
+  return <GameContainer />;
 }
