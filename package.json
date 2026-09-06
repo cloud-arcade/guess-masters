@@ -1,7 +1,7 @@
 {
-  "name": "cloud-arcade-game-template",
+  "name": "guess-masters",
   "version": "1.0.0",
-  "description": "A React + Canvas template for building games that integrate with the CloudArcade platform",
+  "description": "Guess Masters - a React + Canvas starter template for CloudArcade",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
     "test:harness": "vite --config vite.harness.config.ts"
   },
   "keywords": [
+    "guess-masters",
     "cloudarcade",
     "game",
     "react",

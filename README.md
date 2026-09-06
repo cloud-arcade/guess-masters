@@ -1,6 +1,6 @@
-# CloudArcade Game Template
+# Guess Masters
 
-A React + Canvas template for building games that integrate seamlessly with the CloudArcade platform. Games built from this template are embedded via iframe, communicate through postMessage, and deploy as static sites on GitHub Pages.
+Guess Masters starter template — a React + Canvas project scaffold for building guessing games that integrate with the CloudArcade platform. Games built from this template are embedded via iframe, communicate through postMessage, and deploy as static sites on GitHub Pages.
 
 ## Features
 
@@ -22,7 +22,7 @@ A React + Canvas template for building games that integrate seamlessly with the 
 Click "Use this template" on GitHub or clone the repository:
 
 ```bash
-git clone https://github.com/your-org/cloud-arcade-game-template.git my-game
+git clone https://github.com/cloud-arcade/guess-masters.git my-game
 cd my-game
 ```
 
@@ -245,7 +245,7 @@ Update `vite.config.ts` with your repository name for GitHub Pages:
 
 ```typescript
 export default defineConfig({
-  base: '/your-repo-name/',
+  base: '/guess-masters/',
   // ...
 });
 ```

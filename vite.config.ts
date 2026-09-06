@@ -7,8 +7,8 @@ export default defineConfig(({ command }) => ({
   plugins: [react()],
   
   // Base path: empty for dev, repository name for production builds (GitHub Pages)
-  // Replace 'cloud-arcade-game-template' with your actual repo name when deploying
-  base: command === 'serve' ? '/' : '/cloud-arcade-game-template/',
+  // Replace with your actual repo name when deploying (default: 'guess-masters')
+  base: command === 'serve' ? '/' : '/guess-masters/',
 
   resolve: {
     alias: {
