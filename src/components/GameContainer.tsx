@@ -13,20 +13,21 @@ import { PlayScreen } from './screens/PlayScreen';
 import { ResultsScreen } from './screens/ResultsScreen';
 import { useDateGame, type RunOutcome } from '@/hooks/useDateGame';
 import { useCloudArcade } from '@/hooks/useCloudArcade';
-import { clearRun, loadRun, loadPrefs, savePrefs, type SavedRun } from '@/game/storage';
-import { setSoundEnabled, unlockAudio } from '@/game/sound';
+import { loadRun, loadPrefs, savePrefs, type SavedRun } from '@/game/storage';
+import { setSoundEnabled, setVolume, unlockAudio } from '@/game/sound';
 import type { CategoryId } from '@/data';
 
 type Screen = 'home' | 'playing' | 'results';
 
 export function GameContainer() {
   const game = useDateGame();
-  const { startSession, endSession, submitScore, gameOver, isConnected, lastRank, scoreState } =
+  const { startSession, endSession, submitScore, gameOver, isConnected, lastRank, scoreState, userName } =
     useCloudArcade({ debug: import.meta.env.DEV });
 
   const [screen, setScreen] = useState<Screen>('home');
   const [savedRun, setSavedRun] = useState<SavedRun | null>(() => loadRun());
   const [sound, setSound] = useState(() => loadPrefs().soundEnabled);
+  const [volume, setVolumeState] = useState(() => loadPrefs().volume);
 
   // Each outcome object is scored exactly once, regardless of how the screen
   // state moves afterwards.
@@ -35,6 +36,10 @@ export function GameContainer() {
   useEffect(() => {
     setSoundEnabled(sound);
   }, [sound]);
+
+  useEffect(() => {
+    setVolume(volume);
+  }, [volume]);
 
   useEffect(() => {
     if (game.phase !== 'dead' || !game.outcome) return;
@@ -94,18 +99,24 @@ export function GameContainer() {
   );
 
   /**
-   * Quit from the play screen. Survival keeps the run resumable — it was saved
-   * when the current question appeared. Freeplay goes to its results.
+   * Leave the play screen for the menu. Both modes go straight there — a
+   * deliberate exit is not a finished run, so freeplay does not detour through
+   * a results screen the player did not ask for.
+   *
+   * Survival keeps the run resumable: it was saved when the question appeared,
+   * and `suspend` banks the clock on the way out, so the menu can offer it back
+   * at the same question, health and second.
    */
   const handleQuit = useCallback(() => {
     if (game.mode === 'survival') {
       game.suspend();
       endSession({ suspended: true });
-      setSavedRun(loadRun());
-      setScreen('home');
     } else {
-      game.finish();
+      game.reset();
+      endSession();
     }
+    setSavedRun(loadRun());
+    setScreen('home');
   }, [game, endSession]);
 
   const handleHome = useCallback(() => {
@@ -124,9 +135,9 @@ export function GameContainer() {
     }
   }, [game.mode, endSession, beginSurvival, beginFreeplay]);
 
-  const discardRun = useCallback(() => {
-    clearRun();
-    setSavedRun(null);
+  const changeVolume = useCallback((value: number) => {
+    setVolumeState(value);
+    savePrefs({ ...loadPrefs(), volume: value });
   }, []);
 
   const toggleSound = useCallback(() => {
@@ -141,18 +152,30 @@ export function GameContainer() {
     <div className="relative h-full w-full overflow-hidden bg-[#07070f]">
       {screen === 'home' && (
         <HomeScreen
-          stats={game.stats}
           savedRun={savedRun}
+          userName={userName}
           soundEnabled={sound}
           onToggleSound={toggleSound}
+          volume={volume}
+          onVolumeChange={changeVolume}
           onStartSurvival={() => beginSurvival()}
           onStartFreeplay={beginFreeplay}
           onResume={(run) => beginSurvival(run)}
-          onDiscardRun={discardRun}
         />
       )}
 
-      {screen === 'playing' && <PlayScreen game={game} onQuit={handleQuit} />}
+      {screen === 'playing' && (
+        <PlayScreen
+          game={game}
+          userName={userName}
+          soundEnabled={sound}
+          onToggleSound={toggleSound}
+          volume={volume}
+          onVolumeChange={changeVolume}
+          onQuit={handleQuit}
+          onPlayAgain={handlePlayAgain}
+        />
+      )}
 
       {screen === 'results' && game.outcome && (
         <ResultsScreen

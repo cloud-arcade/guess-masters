@@ -8,6 +8,7 @@
  */
 
 import type { CategoryId } from '@/data';
+import { ROUND_SECONDS } from './rules';
 
 const PREFIX = 'guess-masters:dates:';
 const KEY_RUN = `${PREFIX}run`;
@@ -23,9 +24,14 @@ const KEY_SEEN = `${PREFIX}seen`;
  * question appears *and* the moment a guess is resolved, so a refresh can never
  * hand the player a fresh question, a second go at a revealed one, or the
  * health they had before a bad guess.
+ *
+ * `remaining` carries the clock across a break: leave on 26 seconds and the
+ * question resumes on 26, so stepping out to the menu costs nothing. It is
+ * seconds, not a deadline — an absolute timestamp would keep counting down
+ * while the game was closed.
  */
 export interface SavedRun {
-  version: 3;
+  version: 4;
   categories: CategoryId[] | 'all';
   seed: number;
   /** Every question id for this run, in the order they will be asked. */
@@ -35,6 +41,8 @@ export interface SavedRun {
   health: number;
   round: number;
   bestStreak: number;
+  /** Seconds left on the current question when this was written. */
+  remaining: number;
   savedAt: number;
 }
 
@@ -44,14 +52,14 @@ export interface SavedStats {
   totalRounds: number;
   perfectGuesses: number;
   bestStreak: number;
-  xp: number;
-  achievements: string[];
   lastPlayedAt?: number;
 }
 
 export interface SavedPrefs {
   categories: CategoryId[] | 'all';
   soundEnabled: boolean;
+  /** Master sound level, 0..1. */
+  volume: number;
 }
 
 function read<T>(key: string): T | null {
@@ -87,7 +95,7 @@ export function loadRun(): SavedRun | null {
   const run = read<Partial<SavedRun>>(KEY_RUN);
   if (
     !run ||
-    run.version !== 3 ||
+    run.version !== 4 ||
     !isNum(run.seed) ||
     !isStrArray(run.order) ||
     run.order.length === 0 ||
@@ -104,7 +112,7 @@ export function loadRun(): SavedRun | null {
     return null;
   }
   return {
-    version: 3,
+    version: 4,
     categories: run.categories as CategoryId[] | 'all',
     seed: run.seed,
     order: run.order,
@@ -112,6 +120,9 @@ export function loadRun(): SavedRun | null {
     health: run.health,
     round: run.round,
     bestStreak: isNum(run.bestStreak) ? run.bestStreak : 0,
+    // A missing or nonsensical clock falls back to a full question rather than
+    // resuming on zero and instantly timing the player out.
+    remaining: isNum(run.remaining) && run.remaining > 0 ? run.remaining : ROUND_SECONDS,
     savedAt: isNum(run.savedAt) ? run.savedAt : Date.now(),
   };
 }
@@ -160,8 +171,6 @@ const DEFAULT_STATS: SavedStats = {
   totalRounds: 0,
   perfectGuesses: 0,
   bestStreak: 0,
-  xp: 0,
-  achievements: [],
 };
 
 export function loadStats(): SavedStats {
@@ -172,8 +181,6 @@ export function loadStats(): SavedStats {
     totalRounds: isNum(raw.totalRounds) ? raw.totalRounds : 0,
     perfectGuesses: isNum(raw.perfectGuesses) ? raw.perfectGuesses : 0,
     bestStreak: isNum(raw.bestStreak) ? raw.bestStreak : 0,
-    xp: isNum(raw.xp) ? raw.xp : 0,
-    achievements: isStrArray(raw.achievements) ? raw.achievements : [],
     lastPlayedAt: isNum(raw.lastPlayedAt) ? raw.lastPlayedAt : undefined,
   };
 }
@@ -182,10 +189,16 @@ export function saveStats(stats: SavedStats): void {
   write(KEY_STATS, stats);
 }
 
-const DEFAULT_PREFS: SavedPrefs = { categories: 'all', soundEnabled: true };
+const DEFAULT_PREFS: SavedPrefs = { categories: 'all', soundEnabled: true, volume: 0.8 };
 
 export function loadPrefs(): SavedPrefs {
-  return { ...DEFAULT_PREFS, ...(read<SavedPrefs>(KEY_PREFS) ?? {}) };
+  const saved = read<Partial<SavedPrefs>>(KEY_PREFS) ?? {};
+  const merged = { ...DEFAULT_PREFS, ...saved };
+  // A corrupt or hand-edited level must not silently mute the game, so anything
+  // outside 0..1 falls back to the default rather than being clamped to zero.
+  const volume =
+    isNum(saved.volume) && saved.volume >= 0 && saved.volume <= 1 ? saved.volume : DEFAULT_PREFS.volume;
+  return { ...merged, volume };
 }
 
 export function savePrefs(prefs: SavedPrefs): void {

@@ -1,14 +1,18 @@
 /**
  * ResultsScreen — end of a run.
  *
- * A single clean column: score count-up, rank, XP bar animating from the old
- * level to the new, achievements earned, a compact stat row, and confetti on a
- * personal best.
+ * A single clean column: the score, a stat list, the platform's leaderboard
+ * status, and confetti on a personal best. Levels, XP and local achievements
+ * are deliberately absent — ranking belongs to the server.
+ *
+ * Sizing is fluid rather than stepped. The score uses `clamp()` so it fills a
+ * wide screen without overflowing a narrow one, and the stats are rows on
+ * phones — where four columns would crush to unreadable slivers — becoming a
+ * row of four only once there is width for it.
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { rankFor, type RoundResult } from '@/game/rules';
-import { ACHIEVEMENT_MAP, levelProgress, titleForLevel } from '@/game/progression';
+import { type RoundResult } from '@/game/rules';
 import type { RunOutcome } from '@/hooks/useDateGame';
 import { Backdrop } from '../game/Backdrop';
 import { Confetti } from '../game/Confetti';
@@ -22,10 +26,8 @@ interface ResultsScreenProps {
 }
 
 export function ResultsScreen({ outcome, submissionState, rank, onPlayAgain, onHome }: ResultsScreenProps) {
-  const { mode, roundsSurvived, history, isNewBest, xpGained, xpBefore, xpAfter, newAchievements, stats } = outcome;
+  const { mode, roundsSurvived, history, isNewBest } = outcome;
   const [countUp, setCountUp] = useState(0);
-  const [xpShown, setXpShown] = useState(xpBefore);
-  const rankInfo = rankFor(roundsSurvived);
 
   // Count the score up on arrival — cheap, effective drama.
   useEffect(() => {
@@ -45,23 +47,6 @@ export function ResultsScreen({ outcome, submissionState, rank, onPlayAgain, onH
     return () => window.clearInterval(timer);
   }, [roundsSurvived]);
 
-  // Tween the XP bar after the score lands.
-  useEffect(() => {
-    if (xpGained === 0) return;
-    const start = window.setTimeout(() => {
-      const t0 = performance.now();
-      const dur = 1100;
-      const frame = (now: number) => {
-        const p = Math.min(1, (now - t0) / dur);
-        const eased = 1 - Math.pow(1 - p, 3);
-        setXpShown(Math.round(xpBefore + (xpAfter - xpBefore) * eased));
-        if (p < 1) requestAnimationFrame(frame);
-      };
-      requestAnimationFrame(frame);
-    }, 800);
-    return () => window.clearTimeout(start);
-  }, [xpBefore, xpAfter, xpGained]);
-
   const summary = useMemo(() => {
     const perfect = history.filter((r) => r.accuracy === 'perfect').length;
     const totalDelta = history.reduce((sum, r) => sum + r.delta, 0);
@@ -73,105 +58,59 @@ export function ResultsScreen({ outcome, submissionState, rank, onPlayAgain, onH
     return { perfect, avgDelta, best };
   }, [history]);
 
-  const level = levelProgress(xpShown);
-  const leveledUp = level.level > levelProgress(xpBefore).level;
-
   return (
     <div className="absolute inset-0">
       <Backdrop tint={isNewBest ? 'from-amber-300 to-emerald-400' : 'from-rose-500 to-violet-600'} density="calm" />
       {isNewBest && <Confetti />}
 
       <div className="relative z-10 flex h-full flex-col overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-xl flex-col items-center justify-center gap-7 px-5 py-8 text-center">
+        <div className="mx-auto flex min-h-full w-full max-w-lg flex-col items-center justify-center gap-6 px-4 py-8 text-center sm:gap-7 sm:px-6">
           {/* Verdict */}
-          <div>
+          <div className="w-full">
             {isNewBest ? (
-              <div className="animate-bounce-in mb-4 inline-flex rounded-full bg-gradient-to-r from-amber-300 to-yellow-500 px-4 py-1.5 text-xs font-black uppercase tracking-[0.2em] text-black shadow-[0_0_28px_rgba(251,191,36,0.7)]">
-                ✦ New personal best ✦
+              <div className="animate-bounce-in mb-3 inline-flex max-w-full items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-300 to-yellow-500 px-3.5 py-1.5 text-[0.62rem] font-black uppercase tracking-[0.16em] text-black shadow-[0_0_28px_rgba(251,191,36,0.7)] sm:px-4 sm:text-xs sm:tracking-[0.2em]">
+                <span aria-hidden>✦</span>
+                <span className="truncate">New personal best</span>
+                <span aria-hidden>✦</span>
               </div>
             ) : (
-              <p className="mb-4 text-[0.65rem] font-black uppercase tracking-[0.3em] text-white/40">
+              <p className="mb-3 text-[0.62rem] font-black uppercase tracking-[0.24em] text-white/40 sm:text-[0.65rem] sm:tracking-[0.3em]">
                 {mode === 'survival' ? 'Run over' : 'Session complete'}
               </p>
             )}
 
-            <p className="text-[0.7rem] font-bold uppercase tracking-[0.25em] text-white/45">
+            <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-white/45 sm:text-[0.7rem] sm:tracking-[0.25em]">
               {mode === 'survival' ? 'Rounds survived' : 'Rounds played'}
             </p>
-            <p className="animate-score-pop mt-1 font-mono text-8xl font-black leading-none tabular-nums sm:text-9xl">
+            {/* clamp() keeps a 3-digit score on one line at 320px and still
+                fills the panel on a desktop. */}
+            <p
+              className="animate-score-pop mt-1 font-semibold leading-none tabular-nums tracking-[-0.03em]"
+              style={{ fontSize: 'clamp(4.5rem, 22vw, 8rem)' }}
+            >
               {countUp}
             </p>
-            <p className="mt-4 text-2xl font-black tracking-tight">{rankInfo.title}</p>
-            <p className="text-sm text-white/45">{rankInfo.blurb}</p>
           </div>
 
-          {/* XP */}
-          {mode === 'survival' && (
-            <div className="w-full max-w-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    key={level.level}
-                    className={`flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-400 to-indigo-600 font-mono text-sm font-black shadow-[0_0_16px_rgba(129,140,248,0.6)] ${leveledUp ? 'animate-bounce-in' : ''}`}
-                  >
-                    {level.level}
-                  </div>
-                  <div className="text-left leading-tight">
-                    <p className="text-sm font-black">{titleForLevel(level.level)}</p>
-                    <p className="text-[0.65rem] text-white/45">
-                      {leveledUp ? <span className="font-bold text-amber-300">LEVEL UP!</span> : `Level ${level.level}`}
-                    </p>
-                  </div>
-                </div>
-                <span className="animate-slide-up font-mono text-sm font-black text-violet-300">+{xpGained} XP</span>
-              </div>
-              <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-violet-400 to-indigo-400 shadow-[0_0_12px_rgba(129,140,248,0.7)] transition-[width] duration-100"
-                  style={{ width: `${Math.round(level.fraction * 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="flex w-full items-stretch justify-center gap-5 sm:gap-8">
-            <Stat label="Exact" value={String(summary.perfect)} tone="text-emerald-300" />
-            <Divider />
-            <Stat label="Avg. off" value={`${summary.avgDelta.toFixed(1)}y`} />
-            <Divider />
-            <Stat label="Streak" value={`${outcome.bestStreak}🔥`} tone="text-amber-300" />
-            <Divider />
-            <Stat
-              label="Closest"
-              value={summary.best ? (summary.best.delta === 0 ? 'Exact' : `${summary.best.delta}y`) : '—'}
-            />
+          {/* Stats — unboxed, matching the lobby's rule row: no panel, no
+              background, separation carried by a hairline at the same weight.
+              Still rows on phones, where four columns would crush values like
+              "145.5y" to unreadable slivers — so the rule runs horizontally
+              between stacked rows and turns vertical once they go four-up. */}
+          <div className="w-full">
+            <p className="mb-3 text-center text-[0.6rem] font-bold uppercase tracking-[0.22em] text-white/30">
+              This run
+            </p>
+            <dl className="flex flex-col sm:grid sm:grid-cols-4">
+              <Stat label="Exact" value={String(summary.perfect)} tone="text-emerald-300" />
+              <Stat label="Avg. off" value={`${summary.avgDelta.toFixed(1)}y`} />
+              <Stat label="Best streak" value={`×${outcome.bestStreak}`} tone="text-amber-300" />
+              <Stat
+                label="Closest"
+                value={summary.best ? (summary.best.delta === 0 ? 'Exact' : `${summary.best.delta}y`) : '—'}
+              />
+            </dl>
           </div>
-
-          {/* Achievements */}
-          {newAchievements.length > 0 && (
-            <div className="flex w-full max-w-sm flex-col gap-2">
-              {newAchievements.map((id, i) => {
-                const a = ACHIEVEMENT_MAP[id];
-                if (!a) return null;
-                return (
-                  <div
-                    key={id}
-                    className="animate-toast-in flex items-center gap-3 rounded-xl bg-amber-300/10 px-3 py-2 text-left ring-1 ring-amber-300/30"
-                    style={{ animationDelay: `${0.9 + i * 0.18}s` }}
-                  >
-                    <span className="text-2xl" aria-hidden>
-                      {a.icon}
-                    </span>
-                    <div className="leading-tight">
-                      <p className="text-sm font-black">{a.title}</p>
-                      <p className="text-[0.7rem] text-white/50">{a.description}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* Leaderboard */}
           {mode === 'survival' && (
@@ -183,17 +122,24 @@ export function ResultsScreen({ outcome, submissionState, rank, onPlayAgain, onH
               )}
               {submissionState === 'error' && <span className="font-bold text-rose-300">failed</span>}
               {submissionState === 'idle' && <span className="text-white/35">offline</span>}
-              <span className="mx-2 text-white/20">·</span>
-              Best <span className="font-mono font-bold text-white">{stats.bestRounds}</span>
             </p>
           )}
 
-          <div className="flex w-full max-w-sm flex-col gap-2.5">
+          <div className="flex w-full flex-col gap-2.5">
             <button type="button" onClick={onPlayAgain} autoFocus className="btn-hero w-full">
               Play again <span aria-hidden>↻</span>
             </button>
-            <button type="button" onClick={onHome} className="btn-ghost w-full">
-              Menu
+            {/* Menu is the way out, not the thing to do next — so it takes the
+                lobby's understated hairline treatment and leaves the filled
+                surface to "Play again". */}
+            <button
+              type="button"
+              onClick={onHome}
+              className="group flex w-full items-center gap-3 rounded-xl py-1 text-white/60 transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/60"
+            >
+              <span className="h-px flex-1 bg-white/[0.08] transition-colors group-hover:bg-white/20" aria-hidden />
+              <span className="shrink-0 text-sm font-semibold">Menu</span>
+              <span className="h-px flex-1 bg-white/[0.08] transition-colors group-hover:bg-white/20" aria-hidden />
             </button>
           </div>
         </div>
@@ -202,15 +148,22 @@ export function ResultsScreen({ outcome, submissionState, rank, onPlayAgain, onH
   );
 }
 
+/**
+ * One statistic, unboxed — the same treatment as the lobby's rule numbers.
+ * A label/value row on narrow screens, legible whatever the value's length,
+ * and a centred value-over-label column once the list becomes a row.
+ *
+ * The hairline follows the layout: a top rule between stacked rows, becoming
+ * a left rule in the four-up grid. Suppressed on the first item either way, so
+ * the group is divided rather than enclosed.
+ */
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex flex-col items-center">
-      <span className={`font-mono text-2xl font-black tabular-nums ${tone ?? ''}`}>{value}</span>
-      <span className="mt-1 text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-white/45">{label}</span>
+    <div className="flex min-w-0 items-center justify-between gap-3 border-t border-white/[0.08] px-1 py-2.5 first:border-t-0 sm:flex-col sm:items-center sm:justify-center sm:gap-0 sm:border-l sm:border-t-0 sm:py-0 sm:first:border-l-0">
+      <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-white/40 sm:order-2 sm:mt-1 sm:w-full sm:truncate sm:text-center sm:text-[0.58rem] sm:tracking-[0.1em]">
+        {label}
+      </dt>
+      <dd className={`text-lg font-semibold tabular-nums sm:order-1 sm:text-2xl ${tone ?? ''}`}>{value}</dd>
     </div>
   );
-}
-
-function Divider() {
-  return <span className="w-px self-stretch bg-white/10" aria-hidden />;
 }

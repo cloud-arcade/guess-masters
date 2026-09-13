@@ -1,8 +1,10 @@
 /**
  * DigitSlots — the four-digit year display.
  *
- * One underlined slot per digit. The active slot glows, filled digits pop in,
- * and on reveal the slots colour-code against the answer.
+ * One underlined slot per digit. The active underline glows and breathes,
+ * filled digits pop in, and on reveal the underlines colour-code against the
+ * answer. No boxes — the underline keeps the numbers feeling light and lets
+ * the digits themselves carry the weight.
  */
 
 import { MAX_DIGITS } from '@/game/rules';
@@ -23,7 +25,7 @@ export function DigitSlots({ digits, answer, accuracy, shake }: DigitSlotsProps)
 
   return (
     <div
-      className={`flex items-end justify-center gap-3 sm:gap-4 ${shake ? 'animate-shake' : ''}`}
+      className={`flex items-end justify-center gap-[clamp(0.4rem,2vw,1rem)] ${shake ? 'animate-shake' : ''}`}
       role="group"
       aria-label="Year guess"
     >
@@ -33,38 +35,53 @@ export function DigitSlots({ digits, answer, accuracy, shake }: DigitSlotsProps)
         const correct = revealed && (perfect || char === answerDigits[i]);
 
         return (
-          <div key={i} className="flex flex-col items-center gap-2">
+          <div key={i} className="flex flex-col items-center gap-[clamp(0.35rem,1.4vmin,0.625rem)]">
             <div
               className={[
                 'flex items-center justify-center',
-                'h-16 w-12 sm:h-20 sm:w-16 lg:h-24 lg:w-[4.5rem]',
-                'font-mono font-black tabular-nums',
-                'text-5xl sm:text-6xl lg:text-7xl',
+                // Fluid, not stepped: the game is embedded, so the window can be
+                // any size at any viewport width. Every dimension scales with the
+                // smaller of width and height, so the slots shrink to fit a short
+                // frame as readily as a narrow one.
+                'h-[clamp(2.6rem,9vmin,6rem)] w-[clamp(1.9rem,6.5vmin,4.5rem)]',
+                'tabular-nums font-semibold leading-none tracking-[-0.02em]',
+                'text-[clamp(1.75rem,6vmin,4.5rem)]',
                 'transition-colors duration-200',
-                revealed ? (correct ? 'text-emerald-300' : 'text-rose-300') : 'text-white',
+                revealed ? (correct ? 'text-emerald-200' : 'text-rose-200') : 'text-white',
               ].join(' ')}
+              style={
+                revealed
+                  ? undefined
+                  : { textShadow: '0 2px 18px rgba(255,255,255,0.22), 0 1px 2px rgba(0,0,0,0.5)' }
+              }
             >
-              {char ? (
-                <span className="animate-digit-pop">{char}</span>
-              ) : isActive ? (
-                <span className="animate-caret text-white/30">|</span>
-              ) : null}
+              {char ? <span className="animate-digit-pop">{char}</span> : null}
             </div>
 
-            <div
-              className={[
-                'h-1 w-12 rounded-full transition-all duration-200 sm:w-16 lg:w-[4.5rem]',
-                revealed
-                  ? correct
-                    ? 'bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.8)]'
-                    : 'bg-rose-400/70'
-                  : isActive
-                    ? 'bg-white shadow-[0_0_14px_rgba(255,255,255,0.7)]'
+            {/* The underline carries the state: a glowing rail that stretches
+                under the active slot and colours on reveal. */}
+            <div className="relative h-[3px] w-[clamp(1.9rem,6.5vmin,4.5rem)] overflow-hidden rounded-full">
+              <div
+                className={[
+                  'absolute inset-0 rounded-full transition-all duration-300',
+                  revealed
+                    ? correct
+                      ? 'bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,0.9)]'
+                      : 'bg-rose-400/70'
                     : char
-                      ? 'bg-white/60'
+                      ? 'bg-white/70'
                       : 'bg-white/15',
-              ].join(' ')}
-            />
+                ].join(' ')}
+              />
+              {/* Active slot: a brighter rail that sweeps in and pulses, so the
+                  caret is the underline rather than a blinking bar. */}
+              {isActive && (
+                <div
+                  className="animate-rail absolute inset-0 rounded-full bg-white"
+                  style={{ boxShadow: '0 0 18px rgba(255,255,255,0.95), 0 0 6px rgba(255,255,255,0.8)' }}
+                />
+              )}
+            </div>
           </div>
         );
       })}

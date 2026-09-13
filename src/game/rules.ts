@@ -12,6 +12,22 @@ import type { DateEntry, Difficulty } from '@/data';
 export const STARTING_HEALTH = 250;
 export const MAX_DIGITS = 4;
 
+/** Seconds allowed per question before the round resolves itself. */
+export const ROUND_SECONDS = 30;
+
+/**
+ * Consecutive questions drawn from one category before the run moves on.
+ * Grouping keeps the on-screen category stable long enough to register, and
+ * makes the "question N of 3" step indicator meaningful.
+ */
+export const QUESTIONS_PER_CATEGORY = 5;
+/**
+ * Penalty for letting the clock run out, in years off. Deliberately worse than
+ * a typical wrong guess: running down the clock must never be cheaper than
+ * committing to an answer.
+ */
+export const TIMEOUT_PENALTY_YEARS = 50;
+
 /** An exact answer heals this much, capped at STARTING_HEALTH. */
 export const PERFECT_BONUS = 50;
 /** Within this many years counts as "close" — a small heal and its own flourish. */
@@ -83,6 +99,18 @@ export function resolveGuess(entry: DateEntry, guess: number, health: number): R
 }
 
 /**
+ * Resolve a round the player never answered.
+ *
+ * Scored as a miss exactly `TIMEOUT_PENALTY_YEARS` off the true year, so it
+ * flows through the same damage, health and accuracy rules as a real guess.
+ * `guess` is reported as the year that penalty lands on, which keeps
+ * `delta = |year - guess|` true for anything reading the result later.
+ */
+export function resolveTimeout(entry: DateEntry, health: number): RoundResult {
+  return resolveGuess(entry, entry.year + TIMEOUT_PENALTY_YEARS, health);
+}
+
+/**
  * Difficulty ramp. Early rounds lean on well-known entries so a new player gets
  * a foothold; later rounds open up the whole library.
  */
@@ -91,16 +119,4 @@ export function difficultyWeightsForRound(round: number): Record<Difficulty, num
   if (round <= 8) return { 1: 3, 2: 4, 3: 4, 4: 2, 5: 1 };
   if (round <= 15) return { 1: 1, 2: 3, 3: 4, 4: 3, 5: 2 };
   return { 1: 1, 2: 2, 3: 3, 4: 4, 5: 3 };
-}
-
-/** Rank label for the end-of-run screen, based on rounds survived. */
-export function rankFor(rounds: number): { title: string; blurb: string } {
-  if (rounds >= 60) return { title: 'Chronomancer', blurb: 'You have seen the timeline itself.' };
-  if (rounds >= 45) return { title: 'Time Lord', blurb: 'Frighteningly well-dated.' };
-  if (rounds >= 32) return { title: 'Archivist', blurb: 'The records are safe with you.' };
-  if (rounds >= 22) return { title: 'Historian', blurb: 'A serious run.' };
-  if (rounds >= 14) return { title: 'Curator', blurb: 'You know your eras.' };
-  if (rounds >= 8) return { title: 'Apprentice', blurb: 'Getting the hang of it.' };
-  if (rounds >= 4) return { title: 'Novice', blurb: 'Everyone starts somewhere.' };
-  return { title: 'Tourist', blurb: 'Have another go — dates are hard.' };
 }

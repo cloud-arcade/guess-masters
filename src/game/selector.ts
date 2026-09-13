@@ -7,8 +7,8 @@
  * way to reroll a question by reloading.
  */
 
-import type { DateEntry, Difficulty } from '@/data';
-import { difficultyWeightsForRound } from './rules';
+import type { CategoryId, DateEntry, Difficulty } from '@/data';
+import { QUESTIONS_PER_CATEGORY, difficultyWeightsForRound } from './rules';
 
 export interface Rng {
   next(): number;
@@ -83,27 +83,102 @@ export function pickNext(pool: DateEntry[], asked: Set<string>, round: number, r
  * Build the complete, fixed question order for a run: every entry in the pool
  * exactly once, as a list of ids.
  *
- * Questions the player has never been shown (not in `seen`) are drawn first,
- * so a player only meets a repeat once they have exhausted everything new in
- * their selection. Within each half the round-by-round difficulty ramp still
- * applies, so the run opens on approachable questions and hardens as it goes.
+ * The run is grouped into rounds of `QUESTIONS_PER_CATEGORY` questions. Within
+ * a round, each step comes from a *different* category and the difficulty
+ * climbs: step 1 is the easiest question of the round, step 5 the hardest. So a
+ * round reads Film(easy) → Space → Music → Sport → History(hard), and the step
+ * indicator doubles as a difficulty ramp the player can feel.
+ *
+ * Two things bend before the shape breaks, in this order:
+ *
+ * 1. Difficulty is a *target*, not a guarantee. A category rarely holds an
+ *    untouched question at exactly the wanted grade, so each step takes the
+ *    nearest available difficulty from the category it drew. The curve stays
+ *    monotonic in intent even when the library cannot supply an exact 1..5.
+ * 2. One-per-category holds only while enough categories have questions left.
+ *    A freeplay run on two categories still fills five steps; it just repeats
+ *    categories within the round rather than stalling.
+ *
+ * Questions the player has never seen are consumed before repeats, and every id
+ * appears exactly once — steps are drawn from per-category pools that are only
+ * ever consumed.
  */
 export function buildOrder(pool: DateEntry[], seen: ReadonlySet<string>, rng: Rng): string[] {
-  const fresh = pool.filter((e) => !seen.has(e.id));
-  const stale = pool.filter((e) => seen.has(e.id));
+  // Remaining questions per category, freshest first so unseen ones go first.
+  const byCategory = new Map<CategoryId, DateEntry[]>();
+  for (const entry of pool) {
+    const list = byCategory.get(entry.category);
+    if (list) list.push(entry);
+    else byCategory.set(entry.category, [entry]);
+  }
 
-  const order: string[] = [];
-  const taken = new Set<string>();
+  for (const [category, entries] of byCategory) {
+    const fresh = shuffle(entries.filter((e) => !seen.has(e.id)), rng);
+    const stale = shuffle(entries.filter((e) => seen.has(e.id)), rng);
+    byCategory.set(category, [...fresh, ...stale]);
+  }
 
-  const drain = (source: DateEntry[]) => {
-    for (let i = 0; i < source.length; i++) {
-      const entry = pickNext(source, taken, order.length + 1, rng);
-      taken.add(entry.id);
-      order.push(entry.id);
+  /**
+   * Take the question closest to `want` from a category, preferring an easier
+   * one on a tie so an early step never jumps above its target. Consumes it.
+   */
+  const takeNearest = (entries: DateEntry[], want: Difficulty): DateEntry | null => {
+    if (entries.length === 0) return null;
+    let bestIndex = 0;
+    let bestCost = Infinity;
+    for (let i = 0; i < entries.length; i++) {
+      const diff = entries[i].difficulty - want;
+      // Distance first; on a tie the easier side (negative diff) wins.
+      const cost = Math.abs(diff) * 2 + (diff > 0 ? 1 : 0);
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestIndex = i;
+        if (cost === 0) break;
+      }
     }
+    return entries.splice(bestIndex, 1)[0];
   };
 
-  drain(fresh);
-  drain(stale);
+  const order: string[] = [];
+
+  for (;;) {
+    const live = [...byCategory.entries()].filter(([, q]) => q.length > 0).map(([c]) => c);
+    if (live.length === 0) break;
+
+    // Categories for this round: a different one per step while supply allows.
+    const roster = shuffle(live, rng);
+    const usedThisRound = new Set<CategoryId>();
+
+    for (let step = 0; step < QUESTIONS_PER_CATEGORY; step++) {
+      const want = (step + 1) as Difficulty;
+
+      // Prefer a category not yet used this round; fall back to any with stock.
+      let category = roster.find((c) => !usedThisRound.has(c) && (byCategory.get(c)?.length ?? 0) > 0);
+      if (!category) {
+        category = roster.find((c) => (byCategory.get(c)?.length ?? 0) > 0);
+      }
+      if (!category) break; // Pool exhausted mid-round; the run ends short.
+
+      const entries = byCategory.get(category);
+      if (!entries) break;
+
+      const picked = takeNearest(entries, want);
+      if (!picked) break;
+
+      usedThisRound.add(category);
+      order.push(picked.id);
+    }
+  }
+
   return order;
+}
+
+/** Fisher-Yates on a copy, driven by the run's seeded stream. */
+function shuffle<T>(items: readonly T[], rng: Rng): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
