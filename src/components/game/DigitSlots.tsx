@@ -16,16 +16,37 @@ interface DigitSlotsProps {
   answer?: number;
   accuracy?: Accuracy;
   shake?: boolean;
+  /**
+   * Geometry in px, measured by the caller from the space the arena actually
+   * has. Passed in rather than expressed as viewport units because the host
+   * frame, the header and the keypad have already spent part of the window —
+   * sizing from `vmin` here is what let the digits and their underlines crush
+   * into the question on a small screen.
+   */
+  boxHeight: number;
+  boxWidth: number;
+  fontSize: number;
+  gap: number;
 }
 
-export function DigitSlots({ digits, answer, accuracy, shake }: DigitSlotsProps) {
+export function DigitSlots({
+  digits,
+  answer,
+  accuracy,
+  shake,
+  boxHeight,
+  boxWidth,
+  fontSize,
+  gap,
+}: DigitSlotsProps) {
   const revealed = answer !== undefined;
   const answerDigits = revealed ? String(answer).padStart(MAX_DIGITS, '0') : '';
   const perfect = accuracy === 'perfect';
 
   return (
     <div
-      className={`flex items-end justify-center gap-[clamp(0.4rem,2vw,1rem)] ${shake ? 'animate-shake' : ''}`}
+      className={`flex items-end justify-center ${shake ? 'animate-shake' : ''}`}
+      style={{ gap }}
       role="group"
       aria-label="Year guess"
     >
@@ -35,32 +56,36 @@ export function DigitSlots({ digits, answer, accuracy, shake }: DigitSlotsProps)
         const correct = revealed && (perfect || char === answerDigits[i]);
 
         return (
-          <div key={i} className="flex flex-col items-center gap-[clamp(0.35rem,1.4vmin,0.625rem)]">
+          <div
+            key={i}
+            className="flex flex-col items-center"
+            style={{ gap: Math.max(3, gap * 0.55) }}
+          >
             <div
               className={[
                 'flex items-center justify-center',
-                // Fluid, not stepped: the game is embedded, so the window can be
-                // any size at any viewport width. Every dimension scales with the
-                // smaller of width and height, so the slots shrink to fit a short
-                // frame as readily as a narrow one.
-                'h-[clamp(2.6rem,9vmin,6rem)] w-[clamp(1.9rem,6.5vmin,4.5rem)]',
                 'tabular-nums font-semibold leading-none tracking-[-0.02em]',
-                'text-[clamp(1.75rem,6vmin,4.5rem)]',
                 'transition-colors duration-200',
                 revealed ? (correct ? 'text-emerald-200' : 'text-rose-200') : 'text-white',
               ].join(' ')}
-              style={
-                revealed
-                  ? undefined
-                  : { textShadow: '0 2px 18px rgba(255,255,255,0.22), 0 1px 2px rgba(0,0,0,0.5)' }
-              }
+              style={{
+                height: boxHeight,
+                width: boxWidth,
+                fontSize,
+                ...(revealed
+                  ? null
+                  : { textShadow: '0 2px 18px rgba(255,255,255,0.22), 0 1px 2px rgba(0,0,0,0.5)' }),
+              }}
             >
               {char ? <span className="animate-digit-pop">{char}</span> : null}
             </div>
 
             {/* The underline carries the state: a glowing rail that stretches
                 under the active slot and colours on reveal. */}
-            <div className="relative h-[3px] w-[clamp(1.9rem,6.5vmin,4.5rem)] overflow-hidden rounded-full">
+            <div
+              className="relative overflow-hidden rounded-full"
+              style={{ height: 3, width: boxWidth }}
+            >
               <div
                 className={[
                   'absolute inset-0 rounded-full transition-all duration-300',

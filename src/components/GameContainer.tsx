@@ -41,28 +41,48 @@ export function GameContainer() {
     setVolume(volume);
   }, [volume]);
 
+  /**
+   * Submit the moment the run ends — not when a screen is reached.
+   *
+   * `outcome` is written once, by `concludeRun`, at the instant the fatal guess
+   * resolves. `phase` does not become 'dead' until the player taps past the
+   * reveal, so keying submission off the phase made the score depend on a tap:
+   * closing the tab on the reveal, or simply never tapping, meant the run was
+   * never scored. The outcome existing is the real end-of-run signal, so that
+   * is what this watches. `scoredRef` still guarantees one submission per run.
+   */
   useEffect(() => {
-    if (game.phase !== 'dead' || !game.outcome) return;
-    if (scoredRef.current === game.outcome) return;
-    scoredRef.current = game.outcome;
+    const outcome = game.outcome;
+    if (!outcome) return;
+    if (scoredRef.current === outcome) return;
+    scoredRef.current = outcome;
 
-    setScreen('results');
     setSavedRun(null);
 
-    if (game.outcome.mode === 'survival') {
-      const { roundsSurvived: rounds, history } = game.outcome;
+    if (outcome.mode === 'survival') {
+      const { roundsSurvived: rounds, history } = outcome;
       submitScore(rounds, {
         rounds,
         mode: 'survival',
         exactGuesses: history.filter((r) => r.accuracy === 'perfect').length,
-        bestStreak: game.outcome.bestStreak,
+        bestStreak: outcome.bestStreak,
         averageDelta: Number(
           (history.reduce((sum, r) => sum + r.delta, 0) / Math.max(1, history.length)).toFixed(2)
         ),
       });
       gameOver(rounds, true);
     }
-  }, [game.phase, game.outcome, submitScore, gameOver]);
+  }, [game.outcome, submitScore, gameOver]);
+
+  /**
+   * Navigation is a separate concern: the results screen appears once the
+   * player has actually dismissed the reveal. Scoring above has already
+   * happened by this point, whether or not they ever get here.
+   */
+  useEffect(() => {
+    if (game.phase !== 'dead' || !game.outcome) return;
+    setScreen('results');
+  }, [game.phase, game.outcome]);
 
   const beginSurvival = useCallback(
     (resume?: SavedRun) => {

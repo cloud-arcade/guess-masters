@@ -31,7 +31,7 @@
  * survival's alone: there is no pressure in freeplay to convey.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCategory } from '@/data';
 import type { DateGameApi } from '@/hooks/useDateGame';
 import { Backdrop } from '../game/Backdrop';
@@ -59,14 +59,50 @@ interface PlayScreenProps {
 }
 
 /**
- * The countdown dial draws an SVG from a pixel size, so it cannot take a CSS
- * clamp() the way the rest of the arena does. Size it against the smaller
- * window axis instead, floored so it stays legible in a small embedded frame.
+ * Sizing is driven by the space the arena actually has, not by viewport units.
+ *
+ * `vmin` and friends know nothing about the host's header, this game's own top
+ * bar, the category line or the keypad — all of which have already spent part
+ * of the window before the digits are laid out. Inside an embedded widget on a
+ * phone that is most of the screen, so viewport-derived sizes overrun what is
+ * left and the digits, their underlines and the question crush together.
+ *
+ * So the stage is measured with a ResizeObserver and every size below is a
+ * fraction of that measured box. Shrinking the window shrinks the box, which
+ * shrinks the digits: nothing can overlap, because nothing is sized from a
+ * number the layout cannot honour.
  */
-function ringSizeFor(): number {
-  if (typeof window === 'undefined') return 44;
-  const vmin = Math.min(window.innerWidth, window.innerHeight);
-  return Math.round(Math.max(26, Math.min(44, vmin * 0.075)));
+interface ArenaMetrics {
+  /** Height available to the question + digits block, in px. */
+  slotSpace: number;
+  /** Width available, in px. */
+  width: number;
+}
+
+function digitMetrics({ slotSpace, width }: ArenaMetrics) {
+  // The digit row may take this share of the vertical space it was given; the
+  // rest belongs to the question, the gaps and the underline.
+  const byHeight = slotSpace * 0.42;
+  // Four slots plus their gaps must also fit across, with room to breathe.
+  const byWidth = (width * 0.92) / 4 - 8;
+
+  const box = Math.max(26, Math.min(96, Math.min(byHeight, byWidth * 1.32)));
+  return {
+    boxH: box,
+    boxW: Math.max(20, Math.min(72, box * 0.72)),
+    font: Math.max(17, Math.min(72, box * 0.74)),
+    gap: Math.max(4, Math.min(16, box * 0.16)),
+  };
+}
+
+/**
+ * The countdown dial draws an SVG from a pixel size, so it cannot take a CSS
+ * clamp() either. Size it from the same measured box, floored so it stays
+ * legible in a small frame.
+ */
+function ringSizeFor(width: number, height: number): number {
+  const basis = Math.min(width, height);
+  return Math.round(Math.max(26, Math.min(44, basis * 0.1)));
 }
 
 interface Toast {
@@ -152,14 +188,34 @@ export function PlayScreen({
 
   const category = useMemo(() => (entry ? getCategory(entry.category) : null), [entry]);
 
-  // Re-measured on resize so an embedded frame gets a dial in proportion to
-  // everything around it.
-  const [ringSize, setRingSize] = useState(() => ringSizeFor());
+  /**
+   * Measure the block the question and digits actually get, and re-measure
+   * whenever anything around it changes size. This is what makes the layout
+   * survive an arbitrary host frame: the numbers are a fraction of the room
+   * genuinely left, so they can never grow into the keypad or the header.
+   */
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [metrics, setMetrics] = useState<ArenaMetrics>({ slotSpace: 260, width: 360 });
+
   useEffect(() => {
-    const onResize = () => setRingSize(ringSizeFor());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      setMetrics((prev) =>
+        Math.abs(prev.slotSpace - rect.height) < 2 && Math.abs(prev.width - rect.width) < 2
+          ? prev
+          : { slotSpace: rect.height, width: rect.width }
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [phase]);
+
+  const slotGeometry = digitMetrics(metrics);
+  const ringSize = ringSizeFor(metrics.width, metrics.slotSpace);
 
   if (!entry || !category) return null;
 
@@ -307,7 +363,10 @@ export function PlayScreen({
 
         {/* Arena */}
         <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-[clamp(0.5rem,2vmin,2rem)] px-[clamp(0.75rem,3vw,1.5rem)] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[clamp(0.5rem,2vmin,2rem)] lg:grid lg:grid-cols-[1.15fr_1fr] lg:items-center lg:gap-14 lg:py-10">
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[clamp(0.5rem,2.2vmin,2.25rem)] lg:flex-none">
+          <div
+            ref={stageRef}
+            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[clamp(0.35rem,1.6vmin,2.25rem)] lg:flex-none"
+          >
             {/* Where you are — a bare line above the question, not a band.
                 Just the topic, a few dots and the clock: no border, no blur,
                 no card, nothing to compete with the question underneath.
@@ -334,7 +393,7 @@ export function PlayScreen({
               />
             </div>
 
-            <div key={entry.id} className="w-full">
+            <div key={entry.id} className="min-h-0 w-full shrink overflow-y-auto">
               <QuestionCard entry={entry} />
             </div>
 
@@ -343,6 +402,10 @@ export function PlayScreen({
               answer={revealing ? entry.year : undefined}
               accuracy={result?.accuracy}
               shake={revealing && (result?.accuracy === 'wild' || result?.accuracy === 'off')}
+              boxHeight={slotGeometry.boxH}
+              boxWidth={slotGeometry.boxW}
+              fontSize={slotGeometry.font}
+              gap={slotGeometry.gap}
             />
           </div>
 
