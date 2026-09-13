@@ -7,6 +7,8 @@
 
 let ctx: AudioContext | null = null;
 let enabled = true;
+/** Master gain, 0..1, applied on top of each sound's own level. */
+let masterVolume = 0.8;
 
 function context(): AudioContext | null {
   if (!enabled) return null;
@@ -29,6 +31,15 @@ export function isSoundEnabled(): boolean {
   return enabled;
 }
 
+/** Set the master level. Values outside 0..1 are clamped. */
+export function setVolume(value: number): void {
+  masterVolume = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : masterVolume;
+}
+
+export function getVolume(): number {
+  return masterVolume;
+}
+
 /** Resume the context — call from a click handler before the first sound. */
 export function unlockAudio(): void {
   const c = context();
@@ -48,6 +59,10 @@ interface ToneOptions {
 function tone({ freq, duration = 0.12, type = 'sine', volume = 0.2, slideTo, delay = 0 }: ToneOptions): void {
   const c = context();
   if (!c) return;
+  // Silent is silent: the release below ramps exponentially, which is undefined
+  // at zero, so a muted master never reaches the oscillator at all.
+  const level = volume * masterVolume;
+  if (level <= 0.0002) return;
   try {
     const start = c.currentTime + delay;
     const osc = c.createOscillator();
@@ -61,7 +76,7 @@ function tone({ freq, duration = 0.12, type = 'sine', volume = 0.2, slideTo, del
 
     // Short attack, exponential release — avoids clicks at the edges.
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(level, start + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
     osc.connect(gain).connect(c.destination);
@@ -90,6 +105,21 @@ export const sfx = {
     // Bigger misses land lower and longer.
     const base = 320 - Math.min(180, severity * 3);
     tone({ freq: base, duration: 0.18, type: 'sawtooth', volume: 0.12, slideTo: base * 0.6 });
+  },
+  /** Clock tick in the final seconds. Rises in pitch as time runs out. */
+  tick: (secondsLeft: number) => {
+    const urgent = secondsLeft <= 3;
+    tone({
+      freq: urgent ? 1040 : 820,
+      duration: urgent ? 0.07 : 0.045,
+      type: 'square',
+      volume: urgent ? 0.1 : 0.05,
+    });
+  },
+  /** The clock ran out and the round was forfeited. */
+  timeout: () => {
+    tone({ freq: 300, duration: 0.22, type: 'sawtooth', volume: 0.16, slideTo: 120 });
+    tone({ freq: 200, duration: 0.3, type: 'sine', volume: 0.12, slideTo: 80, delay: 0.12 });
   },
   gameOver: () => {
     tone({ freq: 400, duration: 0.25, type: 'sawtooth', volume: 0.16, slideTo: 200 });

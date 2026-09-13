@@ -1,39 +1,32 @@
 /**
- * QuestionCard — the prompt, with its category badge and difficulty pips.
+ * QuestionCard — the prompt itself.
  *
  * Keyed on entry id by the caller so each new question animates in.
+ *
+ * The category and its step live in CategoryStep above this, which owns the
+ * whole "where am I" line; repeating them here only split the player's
+ * attention between two versions of the same information. Difficulty is no
+ * longer surfaced at all during play — it was one more thing to read on a
+ * clock, and it never changed how the question was answered.
  */
 
-import { getCategory, type DateEntry } from '@/data';
+import type { DateEntry } from '@/data';
 
 interface QuestionCardProps {
   entry: DateEntry;
 }
 
 export function QuestionCard({ entry }: QuestionCardProps) {
-  const category = getCategory(entry.category);
-
   return (
-    <div className="animate-question-in flex flex-col items-center gap-4 text-center">
-      <div className="flex items-center gap-2.5">
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1 text-[0.7rem] font-bold uppercase tracking-wider ${category.accent.text}`}
-        >
-          <span aria-hidden>{category.icon}</span>
-          {category.label}
-        </span>
-
-        <span className="flex items-center gap-0.5" aria-label={`Difficulty ${entry.difficulty} of 5`}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <span
-              key={i}
-              className={`h-1 w-2.5 rounded-full ${i < entry.difficulty ? 'bg-white/50' : 'bg-white/10'}`}
-            />
-          ))}
-        </span>
-      </div>
-
-      <h2 className="max-w-2xl text-balance text-xl font-bold leading-snug tracking-tight text-white sm:text-2xl lg:text-3xl">
+    <div className="animate-question-in flex flex-col items-center text-center">
+      <h2
+        className="max-w-2xl text-balance font-bold leading-snug tracking-tight text-white"
+        // Inline, not a Tailwind arbitrary value: two attempts at
+        // text-[clamp(...)] with a calc() inside were silently dropped by the
+        // scanner, leaving the prompt with no font-size at all. An inline style
+        // bypasses the scanner entirely and cannot fail that way.
+        style={{ fontSize: 'clamp(0.95rem, calc(2.4vmin + 0.55rem), 1.875rem)' }}
+      >
         {entry.prompt}
       </h2>
     </div>

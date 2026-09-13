@@ -59,6 +59,9 @@ export function useCloudArcade(options: CloudArcadeOptions = {}) {
 
   const [isConnected, setIsConnected] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  // Display name from the platform. Standalone play has none, so the UI falls
+  // back rather than showing an empty slot.
+  const [userName, setUserName] = useState<string | null>(null);
   const [scoreState, setScoreState] = useState<ScoreState>('idle');
   const [lastRank, setLastRank] = useState<number | undefined>(undefined);
   const sessionIdRef = useRef<string | null>(null);
@@ -90,6 +93,7 @@ export function useCloudArcade(options: CloudArcadeOptions = {}) {
         case 'USER_INFO':
           setIsConnected(true);
           setUserId(data.payload.userId ?? data.payload.guestId ?? null);
+          setUserName(data.payload.guestName ?? null);
           break;
 
         case 'SESSION_STARTED':
@@ -159,6 +163,7 @@ export function useCloudArcade(options: CloudArcadeOptions = {}) {
   return {
     isConnected,
     userId,
+    userName,
     scoreState,
     lastRank,
     startSession,

@@ -1,9 +1,12 @@
 export { Backdrop } from './Backdrop';
 export { CategoryPicker } from './CategoryPicker';
+export { CategoryStep } from './CategoryStep';
 export { Confetti } from './Confetti';
+export { CountdownRing } from './CountdownRing';
 export { DigitSlots } from './DigitSlots';
 export { HealthBar } from './HealthBar';
 export { Keypad } from './Keypad';
+export { PlayerBar } from './PlayerBar';
 export { QuestionCard } from './QuestionCard';
 export { ResultReveal } from './ResultReveal';
 export { StreakChip } from './StreakChip';

@@ -12,7 +12,6 @@ export function StreakChip({ streak }: StreakChipProps) {
   if (streak < 2) {
     return (
       <div className="hidden sm:flex h-9 items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-3 text-xs font-semibold text-white/30">
-        <span aria-hidden>🔥</span>
         <span className="font-mono tabular-nums">×{streak}</span>
       </div>
     );
@@ -34,9 +33,6 @@ export function StreakChip({ streak }: StreakChipProps) {
       ].join(' ')}
       aria-label={`Streak ${streak}`}
     >
-      <span className={warm ? 'animate-flame' : ''} aria-hidden>
-        🔥
-      </span>
       <span className="font-mono">×{streak}</span>
       {hot && <span className="ml-0.5 hidden sm:inline tracking-wider">ON FIRE</span>}
     </div>

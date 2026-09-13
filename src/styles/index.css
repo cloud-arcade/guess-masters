@@ -43,6 +43,118 @@
       0 10px 40px -10px rgba(0, 0, 0, 0.6);
   }
 
+  /* ------------------------------------------------------------------
+     Glassmorphism
+     ------------------------------------------------------------------
+     Three ingredients do the work, and every glass surface uses all three:
+       1. a saturating backdrop blur, so colour behind the panel bleeds
+          through instead of the panel reading as flat grey;
+       2. a top-lit inner hairline plus a darker bottom one, which is what
+          sells "a pane of glass caught in light" rather than "a div";
+       3. a soft ambient shadow so the panel sits *above* the page.
+     `--glass-tint` lets a panel take on a category accent without
+     restating the recipe. */
+  .glass-panel {
+    position: relative;
+    border-radius: 1.75rem;
+    background:
+      linear-gradient(
+        160deg,
+        rgba(255, 255, 255, 0.11) 0%,
+        rgba(255, 255, 255, 0.045) 38%,
+        rgba(255, 255, 255, 0.02) 100%
+      );
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+      0 24px 70px -20px rgba(0, 0, 0, 0.75),
+      0 2px 10px -4px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Specular sheen across the top edge — the highlight a real pane catches.
+     Pointer-transparent so it never eats a click on the panel's controls. */
+  .glass-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0.06) 26%,
+      transparent 55%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Interactive glass — keys and tiles. Lighter blur than a panel because
+     these sit *on* a panel and stacked heavy blurs turn to mud. */
+  .glass-key {
+    position: relative;
+    border-radius: 1.1rem;
+    background: linear-gradient(
+      165deg,
+      rgba(255, 255, 255, 0.13) 0%,
+      rgba(255, 255, 255, 0.055) 50%,
+      rgba(255, 255, 255, 0.03) 100%
+    );
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -2px 6px rgba(0, 0, 0, 0.3),
+      0 4px 14px -6px rgba(0, 0, 0, 0.7);
+    transition:
+      transform 130ms cubic-bezier(0.22, 1, 0.36, 1),
+      background 130ms ease,
+      border-color 130ms ease,
+      box-shadow 130ms ease;
+  }
+  .glass-key:hover:not(:disabled) {
+    background: linear-gradient(
+      165deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.09) 50%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+    border-color: rgba(255, 255, 255, 0.28);
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      inset 0 -2px 6px rgba(0, 0, 0, 0.28),
+      0 10px 24px -8px rgba(0, 0, 0, 0.8);
+  }
+  /* Pressed: the key sinks and the inner shadow flips to the top edge, so
+     the light reads as coming from above a recessed surface. */
+  .glass-key:active:not(:disabled) {
+    transform: translateY(1px) scale(0.96);
+    box-shadow:
+      inset 0 2px 8px rgba(0, 0, 0, 0.45),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.1),
+      0 2px 6px -4px rgba(0, 0, 0, 0.6);
+  }
+  .glass-key:disabled {
+    opacity: 0.28;
+    pointer-events: none;
+  }
+
+  /* Keyboard focus ring that reads on glass in both directions. */
+  .glass-key:focus-visible,
+  .glass-tile:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.75);
+    outline-offset: 2px;
+  }
+
   /* Big primary action. */
   .btn-hero {
     @apply relative inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-extrabold uppercase tracking-wide text-black;
@@ -63,6 +175,37 @@
   }
   .btn-hero:active {
     transform: translateY(0) scale(0.98);
+  }
+
+  /* Secondary action — a solid, obviously-pressable button that still defers
+     to .btn-hero. It reads as a button by having a real filled surface and a
+     lifted edge; the hero keeps the lead through colour and glow, not through
+     being the only thing with a background. */
+  .btn-secondary {
+    @apply relative inline-flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-4 text-sm font-bold tracking-wide text-white;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.085) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      inset 0 -2px 6px rgba(0, 0, 0, 0.22),
+      0 6px 18px -8px rgba(0, 0, 0, 0.75);
+    transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  }
+  .btn-secondary:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.13) 100%);
+    border-color: rgba(255, 255, 255, 0.32);
+    transform: translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.38),
+      inset 0 -2px 6px rgba(0, 0, 0, 0.2),
+      0 10px 24px -8px rgba(0, 0, 0, 0.8);
+  }
+  .btn-secondary:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow:
+      inset 0 2px 8px rgba(0, 0, 0, 0.4),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+      0 2px 6px -4px rgba(0, 0, 0, 0.6);
   }
 
   .btn-ghost {
@@ -100,6 +243,55 @@
 @keyframes slide-up {
   from { transform: translateY(14px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Modal entrance. The scrim's blur ramps up rather than snapping on, and the
+   panel rises with a slight overshoot — that combination is what stops an
+   overlay reading as flat when it pops. */
+@keyframes scrim-in {
+  from { opacity: 0; backdrop-filter: blur(0px);  -webkit-backdrop-filter: blur(0px); }
+  to   { opacity: 1; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+}
+
+@keyframes panel-in {
+  0%   { transform: translateY(28px) scale(0.94); opacity: 0; }
+  70%  { transform: translateY(-4px) scale(1.008); opacity: 1; }
+  100% { transform: translateY(0) scale(1);        opacity: 1; }
+}
+
+/* Tiles stagger in behind the panel so the grid assembles instead of
+   appearing all at once. Delay is set per-tile inline. */
+@keyframes tile-in {
+  from { transform: translateY(10px) scale(0.96); opacity: 0; }
+  to   { transform: translateY(0) scale(1);       opacity: 1; }
+}
+
+/* Active digit underline: sweeps in from the left, then breathes so the
+   caret is the rail itself rather than a blinking bar. */
+@keyframes rail {
+  0%       { transform: scaleX(0); opacity: 0.6; }
+  45%      { transform: scaleX(1); opacity: 1; }
+  70%      { transform: scaleX(1); opacity: 0.55; }
+  100%     { transform: scaleX(1); opacity: 1; }
+}
+
+/* Countdown dial in its final seconds — a tightening heartbeat. */
+@keyframes clock-pulse {
+  0%, 100% { transform: scale(1); }
+  22%      { transform: scale(1.09); }
+  44%      { transform: scale(1); }
+}
+
+/* Edge vignette while the clock is running out. */
+@keyframes time-warn {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.85; }
+}
+
+/* Slow drift for the backdrop's glass shards. */
+@keyframes shard-drift {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50%      { transform: translate(24px, -32px) rotate(8deg); }
 }
 
 @keyframes question-in {
@@ -158,10 +350,15 @@
   100% { transform: translateY(0);    opacity: 1; }
 }
 
-/* Streak flame. */
-@keyframes flame {
-  0%, 100% { transform: scale(1) rotate(-3deg); }
-  50%      { transform: scale(1.18) rotate(3deg); }
+/* The post-round fact, arriving a beat after the button settles. */
+@keyframes fact-in {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes step-pulse {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.35); opacity: 0.75; }
 }
 
 /* Backdrop motion. */
@@ -221,14 +418,18 @@
 .animate-flash-hit   { animation: flash-hit 0.55s ease-out forwards; }
 .animate-flash-heal  { animation: flash-heal 0.7s ease-out forwards; }
 .animate-tick        { animation: tick 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
-.animate-flame       { display: inline-block; animation: flame 0.7s ease-in-out infinite; }
-.animate-drift-up    { animation: drift-up linear infinite; }
+.animate-shard-drift { animation: shard-drift ease-in-out infinite; }
+.animate-rail        { transform-origin: left; animation: rail 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.animate-clock-pulse { animation: clock-pulse 1s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.animate-time-warn   { animation: time-warn 1s ease-in-out infinite; }
 .animate-orb-a       { animation: orb-a 18s ease-in-out infinite; }
 .animate-orb-b       { animation: orb-b 22s ease-in-out infinite; }
 .animate-orb-c       { animation: orb-c 26s ease-in-out infinite; }
 .animate-grow        { transform-origin: left; animation: grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 .animate-toast-in    { animation: toast-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
 .animate-confetti    { animation: confetti-fall linear forwards; }
+.animate-fact-in     { animation: fact-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both; }
+.animate-step-pulse  { animation: step-pulse 1.5s ease-in-out infinite; }
 
 .text-shimmer {
   background: linear-gradient(90deg, #ffffff 0%, #a7f3d0 25%, #ffffff 50%, #67e8f9 75%, #ffffff 100%);
@@ -237,6 +438,82 @@
   background-clip: text;
   color: transparent;
   animation: shimmer 6s linear infinite;
+}
+
+/* Volume slider — the range input is rotated to run bottom-to-top, so the
+   thumb is styled once and both vendor pseudo-elements are kept in step. The
+   track colour is painted by an inline gradient on the element itself, since
+   the fill percentage is dynamic. */
+.volume-range {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+.volume-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: none;
+  box-shadow: 0 0 8px rgba(110, 231, 183, 0.8), 0 1px 3px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.volume-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+.volume-range::-moz-range-thumb {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: none;
+  box-shadow: 0 0 8px rgba(110, 231, 183, 0.8), 0 1px 3px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+.volume-range::-moz-range-track {
+  background: transparent;
+}
+.volume-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+/* Keypad surface.
+   Bare on phones — the keys are the interface, and a panel around them only
+   eats width that the keys themselves should have. The glass recipe returns
+   once there is room for it.
+
+   This is a real media query rather than a `sm:glass-panel` utility because
+   Tailwind will not generate a responsive variant of a custom component class:
+   that form compiles to nothing at all, leaving the card permanently absent. */
+.keypad-surface {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  gap: 0.375rem;
+}
+@media (min-width: 640px) {
+  .keypad-surface {
+    gap: 0.75rem;
+    padding: 0.875rem;
+    border-radius: 1.75rem;
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.11) 0%,
+      rgba(255, 255, 255, 0.045) 38%,
+      rgba(255, 255, 255, 0.02) 100%
+    );
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+      0 24px 70px -20px rgba(0, 0, 0, 0.75);
+  }
 }
 
 /* Hide scrollbars on horizontal strips while keeping them scrollable. */

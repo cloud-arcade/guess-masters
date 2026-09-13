@@ -7,23 +7,46 @@
  *   'revealing' the guess is locked in and the result is animating
  *   'dead'      the run is over — health hit zero, or freeplay was finished
  *
+ * Clock: survival questions run for ROUND_SECONDS. The deadline is an absolute
+ * timestamp rather than a decrementing counter, so a throttled background tab
+ * cannot buy extra time. Running out resolves the round as a miss (see
+ * `resolveTimeout`) rather than letting the player stall indefinitely.
+ *
+ * Freeplay is untimed. There is no score and nothing to protect from stalling,
+ * so a player can sit on a question as long as they like. The deadline is simply
+ * never set, which leaves the clock effect inert and makes a timeout
+ * unreachable — `timed` on the API says which mode is in force so the UI can
+ * drop the countdown entirely rather than render a frozen one.
+ *
  * Question order: the full sequence for a run is fixed the moment it starts
  * (see `buildOrder`) and never redrawn. Questions the player has not been shown
  * before come first, so repeats only appear once the whole selection has been
  * played through.
  *
- * Persistence: a survival run is saved when a question appears *and* again the
- * instant a guess is resolved. The save holds the fixed order and the current
- * position, so a refresh at any point — mid-question or mid-reveal — resumes on
- * the same question or the next one, with the health the player actually has.
- * There is no way to reroll a question or undo a guess by reloading. On death
- * the run is cleared and the outcome (XP, new best, achievements) is computed
- * exactly once and held in `outcome` for the results screen.
+ * Persistence: a survival run is saved the instant a guess is resolved, and on
+ * every question after that. A fresh run is deliberately NOT saved when its
+ * first question appears — it only becomes a run once an answer has been given,
+ * so opening survival and leaving immediately leaves nothing to resume. The
+ * save holds the fixed order and the current position, so a refresh at any
+ * point after that first answer — mid-question or mid-reveal — resumes on the
+ * same question or the next one, with the health the player actually has. There
+ * is no way to reroll a question or undo a guess by reloading. On death the run
+ * is cleared and the outcome (rounds survived, new best) is computed exactly
+ * once and held in `outcome` for the results screen.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ALL_ENTRIES, getPool, type CategoryId, type DateEntry } from '@/data';
-import { MAX_DIGITS, STARTING_HEALTH, resolveGuess, type GameMode, type RoundResult } from '@/game/rules';
+import {
+  MAX_DIGITS,
+  QUESTIONS_PER_CATEGORY,
+  ROUND_SECONDS,
+  STARTING_HEALTH,
+  resolveGuess,
+  resolveTimeout,
+  type GameMode,
+  type RoundResult,
+} from '@/game/rules';
 import { buildOrder, createRng, randomSeed } from '@/game/selector';
 import {
   clearRun,
@@ -35,7 +58,7 @@ import {
   type SavedRun,
   type SavedStats,
 } from '@/game/storage';
-import { bestStreakIn, newlyUnlocked, streakAfter, xpForRun } from '@/game/progression';
+import { bestStreakIn, streakAfter } from '@/game/progression';
 import { sfx } from '@/game/sound';
 
 export type Phase = 'idle' | 'asking' | 'revealing' | 'dead';
@@ -54,10 +77,6 @@ export interface RunOutcome {
   history: RoundResult[];
   bestStreak: number;
   isNewBest: boolean;
-  xpGained: number;
-  xpBefore: number;
-  xpAfter: number;
-  newAchievements: string[];
   stats: SavedStats;
 }
 
@@ -78,6 +97,18 @@ export interface DateGameApi {
   outcome: RunOutcome | null;
   stats: SavedStats;
   canSubmit: boolean;
+  /** Seconds left on the current question, fractional. Meaningless when untimed. */
+  remaining: number;
+  /** Total seconds a question is given. */
+  roundSeconds: number;
+  /** True when the current mode runs a clock. Freeplay does not. */
+  timed: boolean;
+  /** True when the last result came from the clock running out. */
+  timedOut: boolean;
+  /** 1-based position of this question within its round (difficulty climbs across it). */
+  categoryStep: number;
+  /** Questions in the current round (the last round of a run may be short). */
+  categorySteps: number;
   pushDigit: (d: string) => void;
   popDigit: () => void;
   clearDigits: () => void;
@@ -136,10 +167,37 @@ export function useDateGame(): DateGameApi {
   const [bestStreak, setBestStreak] = useState(0);
   const [outcome, setOutcome] = useState<RunOutcome | null>(null);
   const [stats, setStats] = useState<SavedStats>(() => loadStats());
+  const [remaining, setRemaining] = useState(ROUND_SECONDS);
+  const [timedOut, setTimedOut] = useState(false);
+
+  /** Absolute ms timestamp the current question expires at; null when idle. */
+  const deadlineRef = useRef<number | null>(null);
 
   const cursorRef = useRef<RunCursor>({ order: [], index: 0, pool: ALL_ENTRIES, seed: 0 });
 
   const streak = useMemo(() => streakAfter(history), [history]);
+
+  /**
+   * Position of the current question within its round.
+   *
+   * A round is a fixed-size group of `QUESTIONS_PER_CATEGORY` questions that
+   * climbs in difficulty, each step from a different category (see
+   * `buildOrder`). Position is therefore just the offset inside the group —
+   * derived from the run's fixed order, so it survives a resume mid-round and
+   * can never disagree with the question on screen.
+   *
+   * The last group of a run can be short if the pool ran out, so the step count
+   * is clamped to what the order actually holds.
+   */
+  const { categoryStep, categorySteps } = useMemo(() => {
+    const { order, index } = cursorRef.current;
+    if (!entry || order.length === 0) return { categoryStep: 1, categorySteps: QUESTIONS_PER_CATEGORY };
+
+    const start = Math.floor(index / QUESTIONS_PER_CATEGORY) * QUESTIONS_PER_CATEGORY;
+    const steps = Math.min(QUESTIONS_PER_CATEGORY, order.length - start);
+
+    return { categoryStep: index - start + 1, categorySteps: steps };
+  }, [entry, round]);
 
   /**
    * Survival: rounds completed before the fatal one. Freeplay: every answered
@@ -156,10 +214,12 @@ export function useDateGame(): DateGameApi {
       round: number;
       index: number;
       bestStreak: number;
+      /** Seconds left on the question being saved. Defaults to a full round. */
+      remaining?: number;
     }) => {
       if (args.mode !== 'survival') return;
       saveRun({
-        version: 3,
+        version: 4,
         categories: args.categories,
         seed: cursorRef.current.seed,
         order: cursorRef.current.order,
@@ -167,6 +227,7 @@ export function useDateGame(): DateGameApi {
         health: args.health,
         round: args.round,
         bestStreak: args.bestStreak,
+        remaining: args.remaining ?? ROUND_SECONDS,
         savedAt: Date.now(),
       });
     },
@@ -202,16 +263,30 @@ export function useDateGame(): DateGameApi {
       setOutcome(null);
       setDigits('');
       setEntry(first.entry);
+      setTimedOut(false);
+      // A resumed run picks the clock up where it was left; a fresh one starts
+      // full. Freeplay never sets a deadline, so the clock effect stays inert.
+      const startRemaining = Math.min(resume?.remaining ?? ROUND_SECONDS, ROUND_SECONDS);
+      deadlineRef.current = nextMode === 'survival' ? Date.now() + startRemaining * 1000 : null;
+      setRemaining(startRemaining);
       setPhase('asking');
 
-      persistRun({
-        mode: nextMode,
-        categories: nextCategories,
-        health: startHealth,
-        round: startRound,
-        index: first.index,
-        bestStreak: startBest,
-      });
+      // A fresh run is not saved yet: it only becomes a run once an answer has
+      // been given. Opening survival and leaving straight away therefore leaves
+      // nothing behind to resume — and nothing for the lobby to warn about.
+      // A resumed run already exists, so re-saving it here banks the clock it
+      // restarted with.
+      if (resume) {
+        persistRun({
+          mode: nextMode,
+          categories: nextCategories,
+          health: startHealth,
+          round: startRound,
+          index: first.index,
+          bestStreak: startBest,
+          remaining: startRemaining,
+        });
+      }
     },
     [persistRun]
   );
@@ -244,7 +319,7 @@ export function useDateGame(): DateGameApi {
 
   const canSubmit = phase === 'asking' && digits.length === MAX_DIGITS;
 
-  /** Close a run: write stats, compute achievements/XP, hold the outcome. */
+  /** Close a run: write stats and hold the outcome. */
   const concludeRun = useCallback(
     (finalHistory: RoundResult[], survived: number, runMode: GameMode) => {
       const runBest = Math.max(bestStreak, bestStreakIn(finalHistory));
@@ -257,17 +332,12 @@ export function useDateGame(): DateGameApi {
           history: finalHistory,
           bestStreak: runBest,
           isNewBest: false,
-          xpGained: 0,
-          xpBefore: before.xp,
-          xpAfter: before.xp,
-          newAchievements: [],
           stats: before,
         });
         return;
       }
 
       const exactThisRun = finalHistory.filter((r) => r.accuracy === 'perfect').length;
-      const xpGained = xpForRun(finalHistory, survived);
 
       const after: SavedStats = {
         ...before,
@@ -276,20 +346,8 @@ export function useDateGame(): DateGameApi {
         totalRounds: before.totalRounds + survived,
         perfectGuesses: before.perfectGuesses + exactThisRun,
         bestStreak: Math.max(before.bestStreak, runBest),
-        xp: before.xp + xpGained,
         lastPlayedAt: Date.now(),
       };
-
-      const unlocked = newlyUnlocked(
-        {
-          roundsSurvived: survived,
-          history: finalHistory,
-          bestStreak: runBest,
-          totals: { runs: after.totalRuns, rounds: after.totalRounds, exact: after.perfectGuesses },
-        },
-        before.achievements
-      );
-      after.achievements = [...before.achievements, ...unlocked];
 
       saveStats(after);
       setStats(after);
@@ -301,61 +359,88 @@ export function useDateGame(): DateGameApi {
         history: finalHistory,
         bestStreak: runBest,
         isNewBest: survived > before.bestRounds && survived > 0,
-        xpGained,
-        xpBefore: before.xp,
-        xpAfter: after.xp,
-        newAchievements: unlocked,
         stats: after,
       });
     },
     [bestStreak]
   );
 
+  /**
+   * Resolve the round with an already-computed result. Shared by a real guess
+   * and by the clock expiring, so both take exactly the same path through
+   * history, streaks, persistence and death.
+   */
+  const resolveRound = useCallback(
+    (res: RoundResult) => {
+      if (!entry) return;
+      // Whatever happens next, the clock for this question is done.
+      deadlineRef.current = null;
+
+      const nextHistory = [...history, res];
+      const nextBest = Math.max(bestStreak, streakAfter(nextHistory));
+
+      // Answered once — it will not come round again until everything else has.
+      markSeen([entry.id]);
+
+      setResult(res);
+      setHistory(nextHistory);
+      setBestStreak(nextBest);
+      setPhase('revealing');
+
+      if (mode === 'freeplay') return;
+
+      setHealth(res.healthAfter);
+
+      if (res.fatal) {
+        // The run is over the moment the fatal guess lands, so the stats are
+        // written now rather than when the results screen appears — a refresh
+        // during the reveal must not lose the run.
+        concludeRun(nextHistory, round - 1, 'survival');
+        return;
+      }
+
+      // The guess is final. Save the run already pointing at the next question
+      // with the post-guess health, so a refresh during the reveal cannot replay
+      // this question with the answer known, nor restore the health before it.
+      persistRun({
+        mode,
+        categories,
+        health: res.healthAfter,
+        round: round + 1,
+        index: cursorRef.current.index + 1,
+        bestStreak: nextBest,
+      });
+    },
+    [entry, history, bestStreak, mode, categories, round, concludeRun, persistRun]
+  );
+
   const submit = useCallback(() => {
     if (!entry || digits.length !== MAX_DIGITS || phase !== 'asking') return;
 
-    const guess = Number(digits);
-    const res = resolveGuess(entry, guess, health);
-    const nextHistory = [...history, res];
-    const nextBest = Math.max(bestStreak, streakAfter(nextHistory));
-
-    // Answered once — it will not come round again until everything else has.
-    markSeen([entry.id]);
+    const res = resolveGuess(entry, Number(digits), health);
 
     sfx.submit();
-    setResult(res);
-    setHistory(nextHistory);
-    setBestStreak(nextBest);
-    setPhase('revealing');
+    setTimedOut(false);
+    resolveRound(res);
 
     if (res.accuracy === 'perfect') sfx.perfect();
     else if (res.accuracy === 'close') sfx.close();
     else sfx.hit(res.delta);
+  }, [entry, digits, phase, health, resolveRound]);
 
-    if (mode === 'freeplay') return;
+  /**
+   * The clock ran out. Scored as a miss TIMEOUT_PENALTY_YEARS off the true
+   * year, so stalling is never cheaper than committing to an answer.
+   */
+  const timeExpired = useCallback(() => {
+    if (!entry || phase !== 'asking') return;
 
-    setHealth(res.healthAfter);
+    const res = resolveTimeout(entry, health);
 
-    if (res.fatal) {
-      // The run is over the moment the fatal guess lands, so the stats are
-      // written now rather than when the results screen appears — a refresh
-      // during the reveal must not lose the run.
-      concludeRun(nextHistory, round - 1, 'survival');
-      return;
-    }
-
-    // The guess is final. Save the run already pointing at the next question
-    // with the post-guess health, so a refresh during the reveal cannot replay
-    // this question with the answer known, nor restore the health before it.
-    persistRun({
-      mode,
-      categories,
-      health: res.healthAfter,
-      round: round + 1,
-      index: cursorRef.current.index + 1,
-      bestStreak: nextBest,
-    });
-  }, [entry, digits, phase, health, history, bestStreak, mode, categories, round, concludeRun, persistRun]);
+    sfx.timeout();
+    setTimedOut(true);
+    resolveRound(res);
+  }, [entry, phase, health, resolveRound]);
 
   const next = useCallback(() => {
     if (phase !== 'revealing') return;
@@ -374,6 +459,9 @@ export function useDateGame(): DateGameApi {
     setEntry(following.entry);
     setDigits('');
     setResult(null);
+    setTimedOut(false);
+    deadlineRef.current = mode === 'survival' ? Date.now() + ROUND_SECONDS * 1000 : null;
+    setRemaining(ROUND_SECONDS);
     setPhase('asking');
 
     persistRun({
@@ -388,24 +476,73 @@ export function useDateGame(): DateGameApi {
 
   const finish = useCallback(() => {
     if (phase === 'idle' || phase === 'dead') return;
+    deadlineRef.current = null;
     concludeRun(history, mode === 'survival' ? round - 1 : history.length, mode);
     setPhase('dead');
   }, [phase, history, mode, round, concludeRun]);
 
   const suspend = useCallback(() => {
-    // The run was already saved when the current question appeared (and again
-    // when it was answered); nothing more to write. Just leave.
+    // Bank the time left so the player returns to the same question on the same
+    // second. Nothing is written for a run with no answers in it: an untouched
+    // first question is not a run, and saving one would put a phantom "resume"
+    // on the lobby for a game that never started.
+    const deadline = deadlineRef.current;
+    if (mode === 'survival' && phase === 'asking' && deadline !== null && history.length > 0) {
+      persistRun({
+        mode,
+        categories,
+        health,
+        round,
+        index: cursorRef.current.index,
+        bestStreak,
+        remaining: Math.max(0.1, Math.min((deadline - Date.now()) / 1000, ROUND_SECONDS)),
+      });
+    }
+    deadlineRef.current = null;
     setPhase('idle');
     setEntry(null);
     setResult(null);
-  }, []);
+  }, [mode, phase, categories, health, round, bestStreak, history.length, persistRun]);
 
   const reset = useCallback(() => {
+    deadlineRef.current = null;
     setPhase('idle');
     setEntry(null);
     setResult(null);
     setOutcome(null);
   }, []);
+
+  /**
+   * Drive the clock while a question is up.
+   *
+   * Time comes from `Date.now()` against an absolute deadline, so a tab that
+   * was throttled or asleep resumes with the correct time left (or expires at
+   * once) rather than gaining the time it spent suspended.
+   */
+  const timeExpiredRef = useRef(timeExpired);
+  timeExpiredRef.current = timeExpired;
+
+  useEffect(() => {
+    if (phase !== 'asking' || deadlineRef.current === null) return;
+
+    let frame = 0;
+    const tick = () => {
+      const deadline = deadlineRef.current;
+      if (deadline === null) return;
+
+      const left = (deadline - Date.now()) / 1000;
+      if (left <= 0) {
+        setRemaining(0);
+        timeExpiredRef.current();
+        return;
+      }
+      setRemaining(left);
+      frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [phase, entry]);
 
   // New-best fanfare once the results screen is up.
   useEffect(() => {
@@ -430,6 +567,12 @@ export function useDateGame(): DateGameApi {
     outcome,
     stats,
     canSubmit,
+    remaining,
+    roundSeconds: ROUND_SECONDS,
+    timed: mode === 'survival',
+    timedOut,
+    categoryStep,
+    categorySteps,
     pushDigit,
     popDigit,
     clearDigits,
